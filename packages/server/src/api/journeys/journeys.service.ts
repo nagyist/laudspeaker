@@ -54,10 +54,13 @@ import {
   ElementCondition,
   EventBranch,
   MessageEvent,
+  CommonMultiBranchMetadata,
   PropertyCondition,
   StartStepMetadata,
   StepType,
   TimeWindowTypes,
+  ExperimentMetadata,
+  ExperimentBranch,
 } from '../steps/types/step.interface';
 import { MessageStepMetadata } from '../steps/types/step.interface';
 import { WaitUntilStepMetadata } from '../steps/types/step.interface';
@@ -79,6 +82,7 @@ import { Queue } from 'bullmq';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { JourneyChange } from './entities/journey-change.entity';
 import isObjectDeepEqual from '@/utils/isObjectDeepEqual';
+import { JourneyLocation } from './entities/journey-location.entity';
 
 export enum JourneyStatus {
   ACTIVE = 'Active',
@@ -241,7 +245,8 @@ export class JourneysService {
     @Inject(JourneyLocationsService)
     private readonly journeyLocationsService: JourneyLocationsService,
     @InjectQueue('transition') private readonly transitionQueue: Queue,
-    @Inject(RedisService) private redisService: RedisService
+    @Inject(RedisService) private redisService: RedisService,
+    @InjectQueue('start') private readonly startQueue: Queue
   ) {}
 
   log(message, method, session, user = 'ANONYMOUS') {
@@ -672,13 +677,14 @@ export class JourneysService {
         );
       //let shouldInclude = true;
       // TODO_JH: implement the following
-      const shouldInclude = this.customersService.checkCustomerMatchesQuery(
-        journey.inclusionCriteria,
-        account,
-        session,
-        undefined,
-        customerId
-      );
+      const shouldInclude =
+        await this.customersService.checkCustomerMatchesQuery(
+          journey.inclusionCriteria,
+          account,
+          session,
+          undefined,
+          customerId
+        );
       // if (customer matches journeyInclusionCriteria)
       //     shouldInclude = true
       // for segment in journey.segments
@@ -710,6 +716,7 @@ export class JourneysService {
             account,
             journey,
             [customer],
+            [],
             session,
             queryRunner,
             clientSession
@@ -739,10 +746,11 @@ export class JourneysService {
     account: Account,
     journey: Journey,
     customers: CustomerDocument[],
+    locations: JourneyLocation[],
     session: string,
     queryRunner: QueryRunner,
-    clientSession: ClientSession
-  ): Promise<void> {
+    clientSession?: ClientSession
+  ): Promise<{ name: string; data: any }[]> {
     const jobs: { name: string; data: any }[] = [];
     const step = await this.stepsService.findByJourneyAndType(
       account,
@@ -760,42 +768,32 @@ export class JourneysService {
         )
       ) {
         this.log(
-          `Max customer limit reached on journey: ${journey.id}. Preventing customer: ${customer.id} from being enrolled.`,
+          `Max customer limit reached on journey: ${journey.id}. Preventing customer: ${customer._id} from being enrolled.`,
           this.enrollCustomersInJourney.name,
           session,
           account.id
         );
         continue;
       }
-      await this.journeyLocationsService.createAndLock(
-        journey,
-        customer,
-        step,
-        session,
-        account,
-        queryRunner
-      );
       const job = {
         name: 'start',
         data: {
-          ownerID: account.id,
-          journeyID: journey.id,
+          owner: account,
+          journey: journey,
           step: step,
+          location: locations.find((location: JourneyLocation) => {
+            return (
+              location.customer === (customer._id ?? customer._id.toString()) &&
+              location.journey === journey.id
+            );
+          }),
           session: session,
-          customerID: customer.id,
+          customer, //customer.id ?? customer._id.toString(),
         },
       };
       jobs.push(job);
-      await this.customersService.updateJourneyList(
-        [customer],
-        journey.id,
-        session,
-        clientSession
-      );
     }
-    if (jobs.length) {
-      await this.transitionQueue.addBulk(jobs);
-    }
+    return jobs;
   }
 
   /**
@@ -873,13 +871,6 @@ export class JourneysService {
           )) &&
           customer.journeys.indexOf(journey.id) < 0
         ) {
-          // await this.stepsService.addToStart(
-          //   account,
-          //   journey.id,
-          //   customer,
-          //   queryRunner,
-          //   session
-          // );
           await this.CustomerModel.updateOne(
             { _id: customer._id },
             {
@@ -1015,16 +1006,12 @@ export class JourneysService {
         relations: ['latestChanger'],
       });
 
-      const journeysWithEnrolledCustomersCount = await Promise.all(
-        journeys.map(async (journey) => ({
-          ...journey,
-          latestChanger: null,
-          latestChangerEmail: journey.latestChanger?.email,
-          enrolledCustomers: await this.CustomerModel.count({
-            journeys: journey.id,
-          }),
-        }))
-      );
+      const journeysWithEnrolledCustomersCount = journeys.map((journey) => ({
+        ...journey,
+        latestChanger: null,
+        latestChangerEmail: journey.latestChanger?.email,
+        enrolledCustomers: +journey.enrollment_count,
+      }));
 
       return { data: journeysWithEnrolledCustomersCount, totalPages };
     } catch (err) {
@@ -1470,23 +1457,21 @@ export class JourneysService {
 
   /**
    * Start a journey.
+   *
    * @param account
    * @param workflowID
    * @param session
    * @returns
    */
   async start(account: Account, journeyID: string, session: string) {
-    let journey: Journey; // Workflow to update
-    this.debug(
-      `${JSON.stringify({ account, journeyID })}`,
-      this.start.name,
-      session,
-      account.email
-    );
-    const transactionSession = await this.connection.startSession();
-    transactionSession.startTransaction();
+    let journey: Journey;
+    let err: any;
+    let triggerStartTasks: {
+      collectionName: string;
+      job: { name: string; data: any };
+    };
     const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
+    const client = await queryRunner.connect();
     await queryRunner.startTransaction();
 
     try {
@@ -1512,25 +1497,11 @@ export class JourneysService {
       if (!journey.inclusionCriteria)
         throw new Error('To start journey a filter should be defined');
 
-      this.debug(
-        `${JSON.stringify({ journey })}`,
-        this.start.name,
-        session,
-        account.email
-      );
-
       const graph = new Graph();
       const steps = await this.stepsService.transactionalfindByJourneyID(
         account,
         journey.id,
         queryRunner
-      );
-
-      this.debug(
-        `${JSON.stringify({ steps: steps })}`,
-        this.start.name,
-        session,
-        account.email
       );
 
       for (let i = 0; i < steps.length; i++) {
@@ -1556,47 +1527,61 @@ export class JourneysService {
       if (!alg.isAcyclic(graph))
         throw new Error('Flow has infinite loops, cannot start.');
 
-      const audienceSize = await this.customersService.getAudienceSize(
-        account,
-        journey.inclusionCriteria,
-        session,
-        transactionSession
-      );
+      const { collectionName, count } =
+        await this.customersService.getAudienceSize(
+          account,
+          journey.inclusionCriteria,
+          session,
+          null
+        );
       if (
         journey.journeyEntrySettings.entryTiming.type ===
         EntryTiming.WhenPublished
       ) {
-        await this.stepsService.triggerStart(
+        await queryRunner.manager.save(Journey, {
+          ...journey,
+          enrollment_count: journey.enrollment_count + 1,
+          last_enrollment_timestamp: Date.now(),
+          isActive: true,
+          startedAt: new Date(Date.now()),
+        });
+        triggerStartTasks = await this.stepsService.triggerStart(
           account,
-          journeyID,
+          journey,
           journey.inclusionCriteria,
-          audienceSize,
+          journey?.journeySettings?.maxEntries?.enabled &&
+            count > parseInt(journey?.journeySettings?.maxEntries?.maxEntries)
+            ? parseInt(journey?.journeySettings?.maxEntries?.maxEntries)
+            : count,
           queryRunner,
-          session
+          client,
+          session,
+          collectionName
         );
+      } else {
+        await queryRunner.manager.save(Journey, {
+          ...journey,
+          isActive: true,
+          startedAt: new Date(Date.now()),
+        });
       }
-
-      // TODO: update to remove dev mode on start
-      // await this.
-
-      await queryRunner.manager.save(Journey, {
-        ...journey,
-        isActive: true,
-        startedAt: new Date(Date.now()),
-      });
 
       await this.trackChange(account, journeyID, queryRunner);
 
-      await transactionSession.commitTransaction();
       await queryRunner.commitTransaction();
-    } catch (err) {
-      await transactionSession.abortTransaction();
+      if (triggerStartTasks) {
+        await this.startQueue.add(
+          triggerStartTasks.job.name,
+          triggerStartTasks.job.data
+        );
+      }
+    } catch (e) {
+      err = e;
+      this.error(e, this.start.name, session, account.email);
       await queryRunner.rollbackTransaction();
-      this.logger.error('Error:  ' + err);
-      throw err;
     } finally {
-      await transactionSession.endSession();
       await queryRunner.release();
+      if (err) throw err;
     }
   }
 
@@ -2187,6 +2172,24 @@ export class JourneysService {
                 })[0].data.stepId;
                 metadata.branches.push(branch);
               }
+            }
+            break;
+          case NodeType.EXPERIMENT:
+            metadata = new ExperimentMetadata();
+            metadata.branches = [];
+
+            for (let j = 0; j < relevantEdges.length; j++) {
+              const edge = relevantEdges[j];
+
+              const branch = new ExperimentBranch();
+
+              branch.index = j;
+              branch.ratio = nodes[i].data.branches[j]?.ratio || 0;
+
+              const edgeTarget = nodes.find((node) => node.id === edge.target);
+              branch.destination = edgeTarget.data.stepId;
+
+              metadata.branches.push(branch);
             }
             break;
         }

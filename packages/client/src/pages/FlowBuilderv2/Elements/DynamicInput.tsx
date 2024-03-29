@@ -1,24 +1,33 @@
+import Button, { ButtonType } from "components/Elements/Buttonv2";
 import Input from "components/Elements/Inputv2";
+import Modal from "components/Elements/Modalv2";
 import Select from "components/Elements/Selectv2";
-import React, { FC, ReactNode, useEffect, useState } from "react";
+import React, { FC, ReactNode, useEffect, useMemo, useState } from "react";
 import { StatementValueType } from "reducers/flow-builder.reducer";
+import { ArrayComponent } from "./ArrayComponent";
 
-interface ValueChanger {
-  value: string;
+export interface ValueChanger {
+  value: any;
   placeholder?: string;
-  onChange: (value: string) => void;
+  onChange: (value: any) => void;
+  dataTestId?: string;
 }
 
-const BooleanComponent: FC<ValueChanger> = ({ value, onChange }) => {
+const BooleanComponent: FC<ValueChanger> = ({
+  value,
+  onChange,
+  dataTestId,
+}) => {
   return (
     <Select
       placeholder="value"
       value={value}
       options={[
-        { key: "true", title: "true" },
-        { key: "false", title: "false" },
+        { key: true, title: "true" },
+        { key: false, title: "false" },
       ]}
       onChange={(v) => onChange(v)}
+      dataTestId={`${dataTestId}-boolean`}
     />
   );
 };
@@ -33,11 +42,9 @@ export enum DateRelativePoint {
   AGO = "ago",
 }
 
-export const DateComponent: FC<ValueChanger & { isRelativeDate?: boolean }> = ({
-  value,
-  onChange,
-  isRelativeDate,
-}) => {
+export const DateComponent: FC<
+  ValueChanger & { isRelativeDate?: boolean; onlyDate?: boolean }
+> = ({ value, onChange, isRelativeDate, onlyDate, dataTestId }) => {
   const [relativeCount, setRelativeCount] = useState(0);
   const [relativeUnit, setRelativeUnit] = useState<DateRelativeUnit>(
     DateRelativeUnit.DAYS
@@ -81,15 +88,18 @@ export const DateComponent: FC<ValueChanger & { isRelativeDate?: boolean }> = ({
       )
         .toISOString()
         .slice(0, 16);
+
+      if (onlyDate) relativeValue = relativeValue.split("T")[0];
     } catch (e) {}
 
     return (
       <input
         value={relativeValue}
         onChange={(e) => onChange(new Date(e.target.value).toUTCString())}
-        type="datetime-local"
-        className="w-[200px] h-[32px] px-[12px] py-[5px] font-roboto text-[14px] leading-[22px] rounded-sm border border-[#E5E7EB]"
+        type={onlyDate ? "date" : "datetime-local"}
+        className="min-w-[250px] w-full h-[32px] px-[12px] py-[5px] font-roboto text-[14px] leading-[22px] rounded-sm border border-[#E5E7EB]"
         placeholder="Select time"
+        data-testid={dataTestId}
       />
     );
   }
@@ -105,6 +115,7 @@ export const DateComponent: FC<ValueChanger & { isRelativeDate?: boolean }> = ({
           setRelativeCount(num);
         }}
         type="number"
+        id="relative-days-dynamic-input"
       />
       <Select
         value={relativeUnit}
@@ -113,6 +124,7 @@ export const DateComponent: FC<ValueChanger & { isRelativeDate?: boolean }> = ({
           key: relativeUn,
           title: relativeUn,
         }))}
+        dataTestId={`${dataTestId}-relative-unit`}
       />
       <Select
         value={relativePoint}
@@ -121,12 +133,13 @@ export const DateComponent: FC<ValueChanger & { isRelativeDate?: boolean }> = ({
           { key: DateRelativePoint.FROM_NOW, title: "from now" },
           { key: DateRelativePoint.AGO, title: "ago" },
         ]}
+        dataTestId={`${dataTestId}-relative-point`}
       />
     </div>
   );
 };
 
-const EmailComponent: FC<ValueChanger> = ({ value, onChange }) => {
+const EmailComponent: FC<ValueChanger> = ({ value, onChange, dataTestId }) => {
   return (
     <input
       type="text"
@@ -134,11 +147,12 @@ const EmailComponent: FC<ValueChanger> = ({ value, onChange }) => {
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="w-full px-[12px] py-[5px] font-inter font-normal text-[14px] leading-[22px] border border-[#E5E7EB] placeholder:font-inter placeholder:font-normal placeholder:text-[14px] placeholder:leading-[22px] placeholder:text-[#9CA3AF] rounded-sm"
+      data-testid={dataTestId}
     />
   );
 };
 
-const NumberComponent: FC<ValueChanger> = ({ value, onChange }) => {
+const NumberComponent: FC<ValueChanger> = ({ value, onChange, dataTestId }) => {
   return (
     <input
       type="number"
@@ -146,6 +160,7 @@ const NumberComponent: FC<ValueChanger> = ({ value, onChange }) => {
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="w-full px-[12px] py-[5px] font-inter font-normal text-[14px] leading-[22px] border border-[#E5E7EB] placeholder:font-inter placeholder:font-normal placeholder:text-[14px] placeholder:leading-[22px] placeholder:text-[#9CA3AF] rounded-sm"
+      data-testid={dataTestId}
     />
   );
 };
@@ -154,6 +169,7 @@ const StringComponent: FC<ValueChanger> = ({
   value,
   placeholder = "",
   onChange,
+  dataTestId,
 }) => {
   return (
     <input
@@ -162,21 +178,28 @@ const StringComponent: FC<ValueChanger> = ({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       className="w-full px-[12px] py-[5px] font-inter font-normal text-[14px] leading-[22px] border border-[#E5E7EB] placeholder:font-inter placeholder:font-normal placeholder:text-[14px] placeholder:leading-[22px] placeholder:text-[#9CA3AF] rounded-sm"
+      data-testid={dataTestId}
     />
   );
 };
 
-interface FlowBuilderDynamicInputProps extends ValueChanger {
+interface DynamicInputProps extends ValueChanger {
   type: StatementValueType;
+  isArray?: boolean;
   isRelativeDate?: boolean;
+  dateFormat?: string;
+  dataTestId?: string;
 }
 
-const FlowBuilderDynamicInput: FC<FlowBuilderDynamicInputProps> = ({
+const DynamicInput: FC<DynamicInputProps> = ({
   type,
+  isArray,
   value,
   placeholder,
   onChange,
   isRelativeDate,
+  dateFormat,
+  dataTestId,
 }) => {
   const [isFirstRender, setIsFirstRender] = useState(true);
 
@@ -187,19 +210,25 @@ const FlowBuilderDynamicInput: FC<FlowBuilderDynamicInputProps> = ({
     [StatementValueType.EMAIL]: "email@gmail.com",
     [StatementValueType.NUMBER]: "0",
     [StatementValueType.STRING]: "",
-    [StatementValueType.ARRAY]: "",
+    [StatementValueType.ARRAY]: JSON.stringify([]),
     [StatementValueType.OBJECT]: "",
   };
 
   const valueTypeToComponentMap: Record<StatementValueType, ReactNode> = {
     [StatementValueType.BOOLEAN]: (
-      <BooleanComponent value={value} onChange={onChange} />
+      <BooleanComponent
+        value={value}
+        onChange={onChange}
+        dataTestId={dataTestId}
+      />
     ),
     [StatementValueType.DATE]: (
       <DateComponent
         value={value}
         onChange={onChange}
         isRelativeDate={isRelativeDate}
+        onlyDate
+        dataTestId={dataTestId}
       />
     ),
     [StatementValueType.DATE_TIME]: (
@@ -207,19 +236,29 @@ const FlowBuilderDynamicInput: FC<FlowBuilderDynamicInputProps> = ({
         value={value}
         onChange={onChange}
         isRelativeDate={isRelativeDate}
+        dataTestId={dataTestId}
       />
     ),
     [StatementValueType.EMAIL]: (
-      <EmailComponent value={value} onChange={onChange} />
+      <EmailComponent
+        value={value}
+        onChange={onChange}
+        dataTestId={dataTestId}
+      />
     ),
     [StatementValueType.NUMBER]: (
-      <NumberComponent value={value} onChange={onChange} />
+      <NumberComponent
+        value={value}
+        onChange={onChange}
+        dataTestId={dataTestId}
+      />
     ),
     [StatementValueType.STRING]: (
       <StringComponent
         placeholder={placeholder}
         value={value}
         onChange={onChange}
+        dataTestId={dataTestId}
       />
     ),
     [StatementValueType.ARRAY]: (
@@ -227,6 +266,7 @@ const FlowBuilderDynamicInput: FC<FlowBuilderDynamicInputProps> = ({
         placeholder={placeholder}
         value={value}
         onChange={onChange}
+        dataTestId={dataTestId}
       />
     ),
     [StatementValueType.OBJECT]: (
@@ -234,6 +274,7 @@ const FlowBuilderDynamicInput: FC<FlowBuilderDynamicInputProps> = ({
         placeholder={placeholder}
         value={value}
         onChange={onChange}
+        dataTestId={dataTestId}
       />
     ),
   };
@@ -247,7 +288,24 @@ const FlowBuilderDynamicInput: FC<FlowBuilderDynamicInputProps> = ({
     onChange(defaultValuesMap[type]);
   }, [type]);
 
-  return <>{valueTypeToComponentMap[type]}</>;
+  const dynamicComponent = valueTypeToComponentMap[type];
+
+  return (
+    <>
+      {isArray ? (
+        <ArrayComponent
+          type={type}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          dateFormat={dateFormat}
+          dataTestId={dataTestId}
+        />
+      ) : (
+        dynamicComponent
+      )}
+    </>
+  );
 };
 
-export default FlowBuilderDynamicInput;
+export default DynamicInput;

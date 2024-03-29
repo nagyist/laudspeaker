@@ -13,11 +13,17 @@ export class TypeOrmConfigService implements TypeOrmOptionsFactory {
       entities: ['dist/**/*.entity.{ts,js}'],
       migrations: ['dist/**/migrations/*.{ts,js}'],
       migrationsTableName: 'typeorm_migrations',
-      logger: 'file',
-      logging: false,
+      logger: 'advanced-console',
+      logging: ['warn', 'error'],
       subscribers: [],
       synchronize: process.env.SYNCHRONIZE == 'true', // never use TRUE in production!
       autoLoadEntities: true,
+      maxQueryExecutionTime: 2000,
+      extra: {
+        max: 100,
+        options:
+          '-c lock_timeout=240000ms -c statement_timeout=240000ms -c idle_in_transaction_session_timeout=240000ms',
+      },
       // migrationsRun: true,
     };
   }

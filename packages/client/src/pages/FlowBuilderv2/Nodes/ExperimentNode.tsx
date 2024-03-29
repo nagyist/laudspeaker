@@ -1,4 +1,4 @@
-import React, { FC } from "react";
+import React, { FC, useMemo } from "react";
 import { Handle, Node, NodeProps, Position } from "reactflow";
 import { useAppSelector } from "store/hooks";
 import BranchPopover from "../Edges/components/BranchPopover";
@@ -15,13 +15,14 @@ export const ExperimentNode: FC<NodeProps<ExperimentNodeData>> = ({
   const { nodes, isOnboardingWaitUntilTooltipVisible, isViewMode } =
     useAppSelector((state) => state.flowBuilder);
 
-  const thisNode = nodes.find(
-    (node) => node.id === id
-  ) as Node<ExperimentNodeData>;
+  const thisNode = useMemo(
+    () => nodes.find((node) => node.id === id) as Node<ExperimentNodeData>,
+    [nodes, id]
+  );
 
   return (
     <div
-      className={`relative wait-until-node w-[260px] h-[80px] rounded bg-white font-inter ${
+      className={`relative experiment-node w-[260px] h-[80px] rounded bg-white font-inter ${
         disabled ? "opacity-50 cursor-not-allowed" : ""
       } ${selected ? "border-2 border-[#6366F1]" : "border border-[#E5E7EB]"}`}
     >
@@ -65,7 +66,7 @@ export const ExperimentNode: FC<NodeProps<ExperimentNodeData>> = ({
         <div className="font-normal text-[14px] leading-[22px] text-[#4B5563]">
           <span
             className={`font-inter font-normal text-[12px] ${
-              thisNode.data.branches?.length < 2 ? "text-[#F43F5E]" : ""
+              thisNode?.data?.branches?.length < 2 ? "text-[#F43F5E]" : ""
             }  leading-5`}
           >
             Set the experiment

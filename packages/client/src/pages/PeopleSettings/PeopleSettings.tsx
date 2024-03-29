@@ -21,9 +21,10 @@ export interface Attribute {
   key: string;
   type: AttributeType;
   dateFormat?: string;
-  isArray: false;
+  isArray: boolean;
   isPrimary?: boolean;
   isPosthog?: boolean;
+  isSystem?: boolean;
 }
 
 interface AttributeChanges {
@@ -58,11 +59,13 @@ const PeopleSettings = () => {
 
   const loadPossibleKeys = async () => {
     const { data } = await ApiService.get<any[]>({
-      url: `/customers/possible-attributes?removeLimit=true&type=String&type=Number&type=Email&type=Date&type=DateTime&isArray=false`,
+      url: `/customers/possible-attributes?removeLimit=true&type=String&type=Number&type=Email&type=Boolean&type=Date&type=DateTime`,
     });
 
-    setPossibleAttributes(data);
-    setInitialAttributes([...data]);
+    const nonSystemAttributes = data.filter((item) => !item.isSystem);
+
+    setPossibleAttributes(nonSystemAttributes);
+    setInitialAttributes([...nonSystemAttributes]);
   };
 
   const loadPK = async () => {
@@ -314,13 +317,14 @@ const PeopleSettings = () => {
               searchValue={search}
               onSearchValueChange={setSearch}
               searchPlaceholder="Search attribute by name"
+              id="attribute-search"
               value={
                 pk || newPK
                   ? `${(newPK || pk)?.key};;${(newPK || pk)?.type}`
                   : ""
               }
               options={possibleAttributes
-                .filter((el) => el.key.includes(search))
+                .filter((el) => el.key.includes(search) && !el.isArray)
                 .map((el) => ({
                   key: `${el.key};;${el.type}`,
                   title: el.key,
@@ -353,9 +357,15 @@ const PeopleSettings = () => {
                     <Select
                       className="!w-[200px]"
                       buttonClassName="!w-[200px]"
-                      value={attr.type}
+                      value={
+                        attr.isArray ? StatementValueType.ARRAY : attr.type
+                      }
                       onChange={(type) => {
-                        possibleAttributes[i].type = type;
+                        if (type === StatementValueType.ARRAY) {
+                          possibleAttributes[i].isArray = true;
+                        } else {
+                          possibleAttributes[i].type = type;
+                        }
                         handleTrackAttributeUpdate(possibleAttributes[i]);
                         setPossibleAttributes([...possibleAttributes]);
                       }}
@@ -364,6 +374,29 @@ const PeopleSettings = () => {
                       )}
                       disabled={!validateUUID(attr.id)}
                     />
+                    {attr.isArray && (
+                      <Select
+                        className="!w-[200px]"
+                        buttonClassName="!w-[200px]"
+                        value={attr.type}
+                        onChange={(type) => {
+                          possibleAttributes[i].type = type;
+                          handleTrackAttributeUpdate(possibleAttributes[i]);
+                          setPossibleAttributes([...possibleAttributes]);
+                        }}
+                        options={Object.values(StatementValueType)
+                          .filter(
+                            (type) =>
+                              type !== StatementValueType.ARRAY &&
+                              type !== StatementValueType.OBJECT
+                          )
+                          .map((type) => ({
+                            key: type,
+                            title: type,
+                          }))}
+                        disabled={!validateUUID(attr.id)}
+                      />
+                    )}
                     {(attr.type === StatementValueType.DATE ||
                       attr.type === StatementValueType.DATE_TIME) && (
                       <DateFormatPicker

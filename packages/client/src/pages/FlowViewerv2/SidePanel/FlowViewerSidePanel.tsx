@@ -11,6 +11,8 @@ import TrackerViewer from "./viewers/TrackerViewer";
 import UserAttributeViewer from "./viewers/UserAttributeViewer";
 import WaitUntilViewer from "./viewers/WaitUntilViewer";
 import ExperimentViewer from "./viewers/ExperimentViewer";
+import MultisplitViewer from "./viewers/MultisplitViewer";
+import PushViewer from "./viewers/PushViewer";
 
 export interface SidePanelComponentProps<T extends NodeData = NodeData> {
   nodeData: T;
@@ -57,6 +59,11 @@ const FlowViewerSidePanel: FC<FlowViewerSidePanelProps> = ({ className }) => {
         )}
       </>
     ),
+    [NodeType.PUSH]: (
+      <>
+        {nodeData.type === NodeType.PUSH && <PushViewer nodeData={nodeData} />}
+      </>
+    ),
     [NodeType.WAIT_UNTIL]: (
       <>
         {nodeData.type === NodeType.WAIT_UNTIL && (
@@ -99,6 +106,13 @@ const FlowViewerSidePanel: FC<FlowViewerSidePanelProps> = ({ className }) => {
         )}
       </>
     ),
+    [NodeType.MULTISPLIT]: (
+      <>
+        {nodeData.type === NodeType.MULTISPLIT && selectedNode && (
+          <MultisplitViewer nodeData={nodeData} />
+        )}
+      </>
+    ),
   };
 
   return (
@@ -132,6 +146,8 @@ const FlowViewerSidePanel: FC<FlowViewerSidePanelProps> = ({ className }) => {
               switch (selectedNode?.data.type) {
                 case NodeType.MESSAGE:
                   return "Users in this step will receive a message with the following template";
+                case NodeType.PUSH:
+                  return "When customers come to this step, they will receive the push";
                 case NodeType.START:
                   return "";
                 case NodeType.JUMP_TO:

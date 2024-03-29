@@ -132,7 +132,7 @@ const PeopleTablev2 = () => {
         key: string;
       }[]
     >({
-      url: `/customers/possible-attributes?key=${q}&isArray=false`,
+      url: `/customers/possible-attributes?key=${q}`,
     });
 
     setPossibleKeys(data.map((item) => item.key));
@@ -159,6 +159,7 @@ const PeopleTablev2 = () => {
         <div className="flex items-center gap-[10px]">
           <Button
             type={ButtonType.SECONDARY}
+            id="people-settings"
             onClick={() => {
               navigate("/people/setting");
             }}
@@ -170,6 +171,7 @@ const PeopleTablev2 = () => {
             onClick={() => {
               navigate("/people/import");
             }}
+            id="import-customer-button"
           >
             Import Customers via CSV
           </Button>
@@ -236,7 +238,10 @@ const PeopleTablev2 = () => {
                   </Button>
                 </div>
               ) : (
-                <button onClick={() => setShowSearch(true)}>
+                <button
+                  onClick={() => setShowSearch(true)}
+                  data-testid="user-search-button"
+                >
                   <img src={searchIconImage} />
                 </button>
               )}
@@ -245,8 +250,16 @@ const PeopleTablev2 = () => {
             <Table
               isLoading={isLoading}
               headings={[
-                <div className="px-5 py-[10px] select-none">ID</div>,
-                <div className="px-5 py-[10px] select-none">
+                <div
+                  className="px-5 py-[10px] select-none"
+                  data-testid="id-header"
+                >
+                  ID
+                </div>,
+                <div
+                  className="px-5 py-[10px] select-none"
+                  data-testid="pk-header"
+                >
                   {pkKeyName ? (
                     <div className="flex items-center gap-2">
                       <KeyIcon className="max-w-[12px] min-w-[12px] max-h-[12px] min-h-[12px]" />
@@ -257,6 +270,7 @@ const PeopleTablev2 = () => {
                   )}
                 </div>,
                 <div
+                  data-testid="sort-header"
                   className="px-5 py-[10px] select-none flex gap-[2px] items-center cursor-pointer"
                   onClick={() => {
                     if (sortOptions.sortBy !== SortProperty.CREATED_AT) {
@@ -302,8 +316,9 @@ const PeopleTablev2 = () => {
               rowsData={rows}
               rows={rows.map((row) => [
                 <button
-                  className="text-[#6366F1]"
+                  className="id-cell text-[#6366F1]"
                   onClick={() => navigate(`/person/${row.id}`)}
+                  id="personIdLink"
                 >
                   {row.id}
                 </button>,

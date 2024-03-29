@@ -16,6 +16,7 @@ const SettingsStepper: FC<SettingsStepperProps> = ({
     SettingsTab.MESSAGE_CHANNEL,
     SettingsTab.EVENT_PROVIDER,
     SettingsTab.API,
+    //SettingsTab.FREQUENCY_CAPPING,
     // Removed for 1 release
     // SettingsTab.PLAN,
     // SettingsTab.BILLING,
@@ -24,10 +25,11 @@ const SettingsStepper: FC<SettingsStepperProps> = ({
 
   const settingsTabToNameMap: { [key: number]: string } = {
     [SettingsTab.ACCOUNT]: "Account",
-    [SettingsTab.MESSAGE_CHANNEL]: "Message channel",
-    [SettingsTab.EVENT_PROVIDER]: "Event provider",
+    [SettingsTab.MESSAGE_CHANNEL]: "Message Channels",
+    [SettingsTab.EVENT_PROVIDER]: "Event Providers",
     [SettingsTab.API]: "API",
     [SettingsTab.WORKSPACE]: "Workspace details",
+    //[SettingsTab.FREQUENCY_CAPPING]: "Frequency capping",
     // Removed for 1 release
     // [SettingsTab.PLAN]: "Plan",
     // [SettingsTab.BILLING]: "Billing",

@@ -30,6 +30,7 @@ interface SelectProps<T, U = any> {
   customBTN?: React.ReactNode;
   id?: string;
   disabled?: boolean;
+  dataTestId?: string;
 }
 
 const Select = <T, U = any>({
@@ -51,6 +52,7 @@ const Select = <T, U = any>({
   buttonInnerWrapperClassName,
   customBTN,
   disabled,
+  dataTestId,
 }: SelectProps<T, U>) => {
   const scrollableRef = useRef(null);
 
@@ -68,17 +70,17 @@ const Select = <T, U = any>({
       className={`relative w-full font-roboto font-normal text-[14px] leading-[22px] text-[#111827] ${
         className ? className : ""
       }`}
+      data-testid={`${dataTestId}-popover`}
     >
       {({ close }) => (
         <>
           <Popover.Button
-            className={`w-full ${buttonClassName || ""}`}
+            className={`${buttonClassName ?? ""}`}
             id={id}
             disabled={disabled}
+            data-testid={`${dataTestId}-button`}
           >
-            {customBTN ? (
-              customBTN
-            ) : (
+            {customBTN ?? (
               <div
                 className={`${
                   buttonInnerWrapperClassName || ""
@@ -86,7 +88,11 @@ const Select = <T, U = any>({
                   disabled ? "bg-[#F3F4F6] select-none" : "bg-white"
                 } px-[12px] py-[4px] flex items-center justify-between gap-[6px]`}
               >
-                <div className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap">
+                <div
+                  className={`${
+                    value ? "text-ellipsis" : "text-muted"
+                  } max-w-full overflow-hidden  whitespace-nowrap`}
+                >
                   {options.find((option) => option.key === value)?.title ||
                     placeholder}
                 </div>
@@ -112,6 +118,7 @@ const Select = <T, U = any>({
             className={`absolute translate-y-[5px] z-10 shadow-[0px_9px_28px_8px_rgba(0,_0,_0,_0.05),_0px_6px_16px_0px_rgba(0,_0,_0,_0.08),_0px_3px_6px_-4px_rgba(0,_0,_0,_0.12)] ${
               panelClassName ? panelClassName : ""
             }`}
+            data-testid={`${dataTestId}-panel`}
           >
             <div className="bg-white py-[4px] max-w-full">
               {searchValue !== undefined && (
@@ -144,6 +151,7 @@ const Select = <T, U = any>({
                       onSearchValueChange?.(e.target.value || "")
                     }
                     className="w-full max-h-[32px] pl-[30px] pr-[26px] py-[5px] font-inter font-normal text-[14px] leading-[22px] border border-[#E5E7EB] placeholder:font-inter placeholder:font-normal placeholder:text-[14px] placeholder:leading-[22px] placeholder:text-[#9CA3AF] rounded-sm"
+                    data-testid="select-input"
                   />
                   {!!searchValue.length && (
                     <XCircle
@@ -194,11 +202,16 @@ const Select = <T, U = any>({
                   {options.map((option, i) => {
                     const props = {
                       className: `${
-                        option.groupLabel &&
-                        "bg-[#F3F4F6] !py-[2px] !cursor-auto !text-[#4B5563] leading-5 font-inter !text-[12px]"
+                        option.groupLabel
+                          ? "bg-[#F3F4F6] !py-[2px] !cursor-auto !text-[#4B5563] leading-5 font-inter !text-[12px]"
+                          : ""
                       }
-                      ${option.nonSelectable && "hover:bg-white !cursor-auto"}
-                      max-w-[240px] overflow-hidden text-ellipsis whitespace-nowrap px-[12px] py-[5px] hover:bg-[#F3F4F6] select-none cursor-pointer`,
+                      ${
+                        option.nonSelectable
+                          ? "hover:bg-white !cursor-auto"
+                          : ""
+                      }
+                      overflow-hidden text-ellipsis whitespace-nowrap px-[12px] py-[5px] hover:bg-[#F3F4F6] select-none cursor-pointer`,
                       onClick: () => {
                         if (option.groupLabel || option.nonSelectable) return;
 
@@ -213,7 +226,12 @@ const Select = <T, U = any>({
                         {renderCustomOption ? (
                           renderCustomOption(props, option.additionalData)
                         ) : (
-                          <div {...props}>{option.title}</div>
+                          <div
+                            {...props}
+                            data-testid={`${dataTestId}-option-${option.title}`}
+                          >
+                            {option.title}
+                          </div>
                         )}
                       </React.Fragment>
                     );

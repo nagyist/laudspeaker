@@ -1,12 +1,6 @@
 import { FC, Fragment, useEffect, useState } from "react";
 import { Menu, Transition } from "@headlessui/react";
-import { Bars3CenterLeftIcon, BellIcon } from "@heroicons/react/24/outline";
-import {
-  ChevronDownIcon,
-  MagnifyingGlassIcon,
-} from "@heroicons/react/20/solid";
-import { useDispatch } from "react-redux";
-import { toggleNavbar } from "reducers/settings.reducer";
+import { ChevronDownIcon } from "@heroicons/react/20/solid";
 import { Link } from "react-router-dom";
 import { useAppSelector } from "store/hooks";
 import { useNavigate } from "react-router-dom";
@@ -25,7 +19,6 @@ interface HeaderProps {
 const workspaceColors = ["#6366F1", "#22C55E", "#EAB308", "#0EA5E9"];
 
 const Header: FC<HeaderProps> = ({ crumbs }) => {
-  const dispatch = useDispatch();
   const navigate = useNavigate();
 
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);

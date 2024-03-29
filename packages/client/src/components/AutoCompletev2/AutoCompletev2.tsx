@@ -22,6 +22,7 @@ interface AutoCompleteProps<T = unknown> {
   noDataFoundPlaceholder?: string;
   includedItems: ItemsSetter<T> | ItemsGetter<T>;
   getKey?: (item: T) => string;
+  inputDataTestId?: string;
 }
 
 const AutoComplete = <T,>({
@@ -34,6 +35,7 @@ const AutoComplete = <T,>({
   placeholder,
   noDataFoundPlaceholder = "",
   getKey,
+  inputDataTestId,
 }: AutoCompleteProps<T>) => {
   const [query, setQuery] = useState(initialValue || "");
   const [items, setItems] = useState<T[]>(
@@ -74,8 +76,10 @@ const AutoComplete = <T,>({
           onChange={(event) => setQuery(event.target.value)}
           placeholder={placeholder}
           className="w-full px-[12px] py-[5px] font-inter font-normal text-[14px] leading-[22px] border border-[#E5E7EB] placeholder:font-inter placeholder:font-normal placeholder:text-[14px] placeholder:leading-[22px] placeholder:text-[#9CA3AF] focus:border-[#6366F1]"
+          id="autoCompleteInput"
+          data-testid={inputDataTestId}
         />
-        <Combobox.Options className="translate-y-[4px] absolute w-full z-[99999999]">
+        <Combobox.Options className="translate-y-[4px] absolute w-full border z-[99999999]">
           <div className="py-[4px] bg-white rounded-sm">
             {items.length === 0 && (
               <span className="text-[14px] block px-[10px] py-[5px] font-inter leading-[22px] text-[#4B5563]">
@@ -84,6 +88,7 @@ const AutoComplete = <T,>({
             )}
             {items.map((item) => (
               <Combobox.Option
+                data-testid={`combobox-option-${item}`}
                 key={retrieveLabel(item)}
                 value={item}
                 className="px-[12px] py-[5px] hover:bg-[#F3F4F6] select-none cursor-pointer"

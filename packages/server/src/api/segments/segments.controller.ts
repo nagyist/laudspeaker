@@ -129,6 +129,28 @@ export class SegmentsController {
     return this.segmentsService.findOne(<Account>user, id, session);
   }
 
+  @Get('/person/:id')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(ClassSerializerInterceptor, new RavenInterceptor())
+  public async findAllSegmentsForPerson(
+    @Req() { user }: Request,
+    @Param('id') id: string,
+    @Query('take') take?: string,
+    @Query('skip') skip?: string,
+    @Query('search') search?: string
+  ) {
+    const session = randomUUID();
+
+    return this.segmentsService.findAllSegmentsForCustomer(
+      <Account>user,
+      id,
+      take && +take,
+      skip && +skip,
+      search,
+      session
+    );
+  }
+
   @Post()
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(ClassSerializerInterceptor, new RavenInterceptor())
@@ -137,19 +159,6 @@ export class SegmentsController {
     @Body() createSegmentDTO: CreateSegmentDTO
   ) {
     const session = randomUUID();
-    //console.log("**** in save segment /n\n");
-    //console.log("the segmentDTO is", JSON.stringify(createSegmentDTO, null, 2) );
-    //test switch back to segmentsService.create
-    /*
-    return await this.segmentsService.testSegment(
-      <Account>user,
-      createSegmentDTO,
-      session
-    );
-    */
-
-    this.debug(`post saving segment`, this.create.name, session);
-
     return await this.segmentsService.create(
       <Account>user,
       createSegmentDTO,

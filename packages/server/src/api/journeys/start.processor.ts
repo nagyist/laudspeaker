@@ -19,11 +19,12 @@ import { Account } from '../accounts/entities/accounts.entity';
 import { Journey } from './entities/journey.entity';
 import { JourneyLocationsService } from './journey-locations.service';
 import { JourneysService } from './journeys.service';
+import { Step } from '../steps/entities/step.entity';
 
 const BATCH_SIZE = +process.env.START_BATCH_SIZE;
 
 @Injectable()
-@Processor('start', { removeOnComplete: { age: 0, count: 0 } })
+@Processor('start', { removeOnComplete: { count: 100 } })
 export class StartProcessor extends WorkerHost {
   constructor(
     private dataSource: DataSource,
@@ -124,13 +125,14 @@ export class StartProcessor extends WorkerHost {
   async process(
     job: Job<
       {
-        ownerID: string;
-        stepID: string;
-        journeyID: string;
+        owner: Account;
+        step: Step;
+        journey: Journey;
         skip: number;
         limit: number;
         query: any;
         session: string;
+        collectionName: string;
       },
       any,
       string
@@ -139,56 +141,44 @@ export class StartProcessor extends WorkerHost {
     //base case: get documents, set them as moving in location table, and batch add the jobs to the transition queue
     if (job.data.limit <= BATCH_SIZE) {
       let err: any;
-      const queryRunner = this.dataSource.createQueryRunner();
+      const queryRunner = await this.dataSource.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
-      const transactionSession = await this.connection.startSession();
-      transactionSession.startTransaction();
       try {
         // Retrieve customers from mongo
         const customers = await this.customersService.find(
-          job.data.ownerID,
+          job.data.owner,
           job.data.query,
           job.data.session,
-          transactionSession,
+          null,
           job.data.skip,
-          job.data.limit
+          job.data.limit,
+          job.data.collectionName
         );
-
-        await this.customersService.updateJourneyList(
-          customers,
-          job.data.journeyID,
-          job.data.session,
-          transactionSession
+        // Retreive locations from Postgres
+        const locations = await this.journeyLocationsService.findForWriteBulk(
+          job.data.journey,
+          customers.map((document) => {
+            return document._id.toString();
+          }),
+          queryRunner
         );
-        const account = await queryRunner.manager.findOne(Account, {
-          where: {
-            id: job.data.ownerID,
-          },
-          relations: ['teams.organization.workspaces'],
-        });
-        const journey = await queryRunner.manager.findOne(Journey, {
-          where: {
-            id: job.data.journeyID,
-          },
-        });
-        await this.journeysService.enrollCustomersInJourney(
-          account,
-          journey,
+        const jobs = await this.journeysService.enrollCustomersInJourney(
+          job.data.owner,
+          job.data.journey,
           customers,
+          locations,
           job.data.session,
           queryRunner,
-          transactionSession
+          null
         );
-        await transactionSession.commitTransaction();
         await queryRunner.commitTransaction();
+        if (jobs && jobs.length) await this.transitionQueue.addBulk(jobs);
       } catch (e) {
-        this.error(e, this.process.name, job.data.session, job.data.ownerID);
-        await transactionSession.abortTransaction();
+        this.error(e, this.process.name, job.data.session, job.data.owner.id);
         await queryRunner.rollbackTransaction();
         err = e;
       } finally {
-        await transactionSession.endSession();
         await queryRunner.release();
         if (err) throw err;
       }
@@ -199,25 +189,27 @@ export class StartProcessor extends WorkerHost {
         {
           name: 'start',
           data: {
-            ownerID: job.data.ownerID,
-            journeyID: job.data.journeyID,
-            stepID: job.data.stepID,
+            owner: job.data.owner,
+            journey: job.data.journey,
+            step: job.data.step,
             session: job.data.session,
             query: job.data.query,
             skip: job.data.skip,
             limit: Math.floor(job.data.limit / 2),
+            collectionName: job.data.collectionName,
           },
         },
         {
           name: 'start',
           data: {
-            ownerID: job.data.ownerID,
-            journeyID: job.data.journeyID,
-            stepID: job.data.stepID,
+            owner: job.data.owner,
+            journey: job.data.journey,
+            step: job.data.step,
             session: job.data.session,
             query: job.data.query,
             skip: job.data.skip + Math.floor(job.data.limit / 2),
-            limit: Math.floor(job.data.limit / 2),
+            limit: Math.ceil(job.data.limit / 2),
+            collectionName: job.data.collectionName,
           },
         },
       ]);

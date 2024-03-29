@@ -1,0 +1,123 @@
+name: Trigger perf test
+on:
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: Endpoint url
+        type: string
+        required: true
+        default: https://perf.laudspeaker.com
+      test_size:
+        description: Test size (# of customers)
+        type: choice
+        required: true
+        default: "1000"
+        options:
+          - "100"
+          - "1000"
+          - "10000"
+          - "50000"
+          - "100000"
+          - "500000"
+          - "1000000"
+      script:
+        description: Which performance script to run?
+        type: choice
+        required: true
+        default: "message_send_only"
+        options:
+          - "message_send_only"
+          - "message_send_and_events"
+
+jobs:
+  trigger-perf-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: kanga333/variable-mapper@master
+        name: Setup params
+        id: params
+        with:
+          key: "${{ inputs.test_size }}"
+          map: |
+            {
+              "^100$": {
+                  "CSV_URL": "https://testtachyontest123.s3.us-west-1.amazonaws.com/perf-folder/perf-100.csv",
+                  "NUM_CUSTOMERS": "100",
+                  "POLLING_MINUTES": ".1",
+                  "EVENTS_PER_ITERATION": "50"
+              },
+              "^1000$": {
+                  "CSV_URL": "https://testtachyontest123.s3.us-west-1.amazonaws.com/perf-folder/perf-1000.csv",
+                  "NUM_CUSTOMERS": "1000",
+                  "POLLING_MINUTES": ".5",
+                  "EVENTS_PER_ITERATION": "500"
+              },
+              "^10000$": {
+                  "CSV_URL": "https://testtachyontest123.s3.us-west-1.amazonaws.com/perf-folder/perf-10000.csv",
+                  "NUM_CUSTOMERS": "10000",
+                  "EVENTS_PER_ITERATION": "3000"
+              },
+              "^50000$": {
+                  "CSV_URL": "https://testtachyontest123.s3.us-west-1.amazonaws.com/perf-folder/perf-50000.csv",
+                  "NUM_CUSTOMERS": "50000",
+                  "EVENTS_PER_ITERATION": "5000"
+              },
+              "^100000$": {
+                  "CSV_URL": "https://testtachyontest123.s3.us-west-1.amazonaws.com/perf-folder/perf-100000.csv",
+                  "NUM_CUSTOMERS": "100000",
+                  "POLLING_MINUTES": "2",
+                  "EVENTS_PER_ITERATION": "10000"
+              },
+              "^500000$": {
+                  "CSV_URL": "https://testtachyontest123.s3.us-west-1.amazonaws.com/perf-folder/perf-500000.csv",
+                  "NUM_CUSTOMERS": "500000",
+                  "POLLING_MINUTES": "5",
+                  "EVENTS_PER_ITERATION": "50000"
+              },
+              "^1000000$": {
+                  "CSV_URL": "https://testtachyontest123.s3.us-west-1.amazonaws.com/perf-folder/perf-1000000.csv",
+                  "NUM_CUSTOMERS": "1000000",
+                  "POLLING_MINUTES": "5",
+                  "EVENTS_PER_ITERATION": "125000"
+              },
+              ".*": {
+                  "POLLING_MINUTES": "1"
+              }
+            }
+          export_to: output,log
+          mode: fill
+      - uses: kanga333/variable-mapper@master
+        name: Setup script
+        id: script
+        with:
+          key: "${{ inputs.script }}"
+          map: |
+            {
+              "^message_send_only$": {
+                "SCRIPT": "customer_messages_test.js"
+              },
+              "^message_send_and_events$": {
+                "SCRIPT": "journey_events_test.js"
+              }
+            }
+          export_to: output,log
+          mode: fill
+      - name: Download csv
+        id: csv
+        run: |
+          export CSV_FILEPATH=${GITHUB_WORKSPACE}/test.csv
+          echo "CSV_FILEPATH=${CSV_FILEPATH}" >> "$GITHUB_OUTPUT"
+          curl ${{ steps.params.outputs.CSV_URL }} -o ${CSV_FILEPATH}
+      - name: Run k6 local test
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: ./packages/tests/k6/${{ steps.script.outputs.SCRIPT }}
+          flags: --quiet
+        env:
+          BASE_URL: ${{ inputs.endpoint }}
+          CSV_FILEPATH: ${{ steps.csv.outputs.CSV_FILEPATH }}
+          NUM_CUSTOMERS: ${{ steps.params.outputs.NUM_CUSTOMERS }}
+          POLLING_MINUTES: ${{ steps.params.outputs.POLLING_MINUTES }}
+          EVENTS_PER_ITERATION: ${{ steps.params.outputs.EVENTS_PER_ITERATION }}

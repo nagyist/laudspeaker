@@ -592,7 +592,12 @@ const RouteComponent: React.FC = () => {
           element={
             <Protected>
               <VerificationProtected>
-                <DrawerLayout>
+                <DrawerLayout
+                  crumbs={[
+                    { text: "Message Template", link: "/templates" },
+                    { text: "Create a Push" },
+                  ]}
+                >
                   <SmsBuilder />
                 </DrawerLayout>
               </VerificationProtected>
@@ -604,7 +609,12 @@ const RouteComponent: React.FC = () => {
           element={
             <Protected>
               <VerificationProtected>
-                <DrawerLayout>
+                <DrawerLayout
+                  crumbs={[
+                    { text: "Message Template", link: "/templates" },
+                    { text: "Create a Push" },
+                  ]}
+                >
                   <PushBuilder />
                 </DrawerLayout>
               </VerificationProtected>
@@ -630,7 +640,13 @@ const RouteComponent: React.FC = () => {
           element={
             <Protected>
               <VerificationProtected>
-                <DrawerLayout>
+                <DrawerLayout
+                  expandable
+                  crumbs={[
+                    { text: "Message template", link: "/templates" },
+                    { text: "Create a push" },
+                  ]}
+                >
                   <WebhookBuilder />
                 </DrawerLayout>
               </VerificationProtected>

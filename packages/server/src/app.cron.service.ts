@@ -1,7 +1,7 @@
 import { Inject, Injectable, LoggerService } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { Model } from 'mongoose';
+import mongoose, { Model } from 'mongoose';
 import {
   Customer,
   CustomerDocument,
@@ -46,22 +46,33 @@ import { randomUUID } from 'crypto';
 import { StepsService } from './api/steps/steps.service';
 import { StepType } from './api/steps/types/step.interface';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
+import { Job, Queue } from 'bullmq';
 import { JourneysService } from './api/journeys/journeys.service';
 import { RedlockService } from './api/redlock/redlock.service';
 import { Lock } from 'redlock';
 import * as _ from 'lodash';
 import { JourneyLocationsService } from './api/journeys/journey-locations.service';
 import { Journey } from './api/journeys/entities/journey.entity';
-import { EntryTiming } from './api/journeys/types/additional-journey-settings.interface';
+import {
+  EntryTiming,
+  EntryTimingFrequency,
+  RecurrenceEndsOptions,
+} from './api/journeys/types/additional-journey-settings.interface';
 import { OrganizationInvites } from './api/organizations/entities/organization-invites.entity';
 import { JourneyLocation } from './api/journeys/entities/journey-location.entity';
 import { Requeue } from './api/steps/entities/requeue.entity';
 import { KEYS_TO_SKIP } from './utils/customer-key-name-validator';
 import { SegmentsService } from './api/segments/segments.service';
 import { CustomersService } from './api/customers/customers.service';
+import { Temporal } from '@js-temporal/polyfill';
 
 const BATCH_SIZE = 500;
+
+const generateUniqueJobId = (jobData) => {
+  // Concatenate the unique identifiers
+  const { ownerID, journeyID, customerID, step } = jobData;
+  return `${ownerID}-${journeyID}-${customerID}-${step.id}`;
+};
 
 @Injectable()
 export class CronService {
@@ -108,8 +119,10 @@ export class CronService {
     @Inject(JourneyLocationsService)
     private journeyLocationsService: JourneyLocationsService,
     @InjectQueue('transition') private readonly transitionQueue: Queue,
+    @InjectQueue('start') private readonly startQueue: Queue,
     @Inject(RedlockService)
-    private readonly redlockService: RedlockService
+    private readonly redlockService: RedlockService,
+    @InjectConnection() private readonly connection: mongoose.Connection
   ) {}
 
   log(message, method, session, user = 'ANONYMOUS') {
@@ -171,80 +184,435 @@ export class CronService {
     );
   }
 
-  @Cron(CronExpression.EVERY_HOUR)
-  async handleCustomerKeysCron() {
+  // TODO: might be deleted after clarification
+  // @Cron(CronExpression.EVERY_HOUR)
+  // async handleCustomerKeysCron() {
+  //   const session = randomUUID();
+  //   try {
+  //     let current = 0;
+  //     const documentsCount = await this.customerModel
+  //       .estimatedDocumentCount()
+  //       .exec();
+
+  //     const keys: Record<string, any[]> = {};
+  //     const keyCustomerMap: Record<string, Set<string>> = {};
+
+  //     while (current < documentsCount) {
+  //       const batch = await this.customerModel
+  //         .find()
+  //         .skip(current)
+  //         .limit(BATCH_SIZE)
+  //         .exec();
+
+  //       batch.forEach((customer) => {
+  //         const obj = customer.toObject();
+  //         for (const key of Object.keys(obj)) {
+  //           if (KEYS_TO_SKIP.includes(key)) continue;
+
+  //           if (keys[key]) {
+  //             keys[key].push(obj[key]);
+  //             keyCustomerMap[key].add(customer.workspaceId);
+  //             continue;
+  //           }
+
+  //           keys[key] = [obj[key]];
+  //           keyCustomerMap[key] = new Set([customer.workspaceId]);
+  //         }
+  //       });
+  //       current += BATCH_SIZE;
+  //     }
+
+  //     for (const key of Object.keys(keys)) {
+  //       const validItem = keys[key].find(
+  //         (item) => item !== '' && item !== undefined && item !== null
+  //       );
+
+  //       if (validItem === '' || validItem === undefined || validItem === null)
+  //         continue;
+
+  //       const keyType = getType(validItem);
+  //       const isArray = keyType.isArray();
+  //       let type = isArray ? getType(validItem[0]).name : keyType.name;
+
+  //       if (type === 'String') {
+  //         if (isEmail(validItem)) type = 'Email';
+  //         if (isDateString(validItem)) type = 'Date';
+  //       }
+
+  //       for (const workspaceId of keyCustomerMap[key].values()) {
+  //         await this.customerKeysModel
+  //           .updateOne(
+  //             { key, workspaceId },
+  //             {
+  //               $set: {
+  //                 key,
+  //                 type,
+  //                 isArray,
+  //                 workspaceId,
+  //               },
+  //             },
+  //             { upsert: true }
+  //           )
+  //           .exec();
+  //       }
+  //     }
+  //   } catch (e) {
+  //     this.error(e, this.handleCustomerKeysCron.name, session);
+  //   }
+  // }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  async minuteTasks() {
     const session = randomUUID();
+    // Time based steps
+    let timeBasedErr: any;
+    let queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    const timeBasedJobs: any[] = [];
     try {
-      let current = 0;
-      const documentsCount = await this.customerModel
-        .estimatedDocumentCount()
-        .exec();
-
-      const keys: Record<string, any[]> = {};
-      const keyCustomerMap: Record<string, Set<string>> = {};
-
-      while (current < documentsCount) {
-        const batch = await this.customerModel
-          .find()
-          .skip(current)
-          .limit(BATCH_SIZE)
-          .exec();
-
-        batch.forEach((customer) => {
-          const obj = customer.toObject();
-          for (const key of Object.keys(obj)) {
-            if (KEYS_TO_SKIP.includes(key)) continue;
-
-            if (keys[key]) {
-              keys[key].push(obj[key]);
-              keyCustomerMap[key].add(customer.workspaceId);
+      const journeys = await this.journeysService.allActiveTransactional(
+        queryRunner
+      );
+      for (
+        let journeyIndex = 0;
+        journeyIndex < journeys.length;
+        journeyIndex++
+      ) {
+        const locations =
+          await this.journeyLocationsService.findAllStaticCustomersInTimeBasedSteps(
+            journeys[journeyIndex],
+            session,
+            queryRunner
+          );
+        for (
+          let locationsIndex = 0;
+          locationsIndex < locations.length;
+          locationsIndex++
+        ) {
+          const step = await this.stepsService.findByID(
+            String(locations[locationsIndex].step),
+            session,
+            null,
+            queryRunner
+          );
+          let branch;
+          // Set branch to -1 for wait until
+          if (step.type === StepType.WAIT_UNTIL_BRANCH) {
+            //Wait until time branch isnt set, continue
+            if (!step.metadata.timeBranch) {
               continue;
             }
-
-            keys[key] = [obj[key]];
-            keyCustomerMap[key] = new Set([customer.workspaceId]);
+            branch = -1;
           }
-        });
-        current += BATCH_SIZE;
-      }
+          // Checking if enough time has elapsed to add step
+          switch (step.type) {
+            case StepType.WAIT_UNTIL_BRANCH:
+              if (step.metadata.timeBranch.delay) {
+                if (
+                  Date.now() - locations[locationsIndex].stepEntry <
+                  Temporal.Duration.from(step.metadata.timeBranch.delay).total({
+                    unit: 'millisecond',
+                  })
+                ) {
+                  continue;
+                }
+              } else if (step.metadata.timeBranch.window) {
+                // Case 1: days of the week/time of day
+                if (step.metadata.timeBranch.window.onDays) {
+                  const now = new Date();
 
-      for (const key of Object.keys(keys)) {
-        const validItem = keys[key].find(
-          (item) => item !== '' && item !== undefined && item !== null
-        );
+                  const startTime = new Date(now.getTime());
+                  startTime.setHours(
+                    step.metadata.timeBranch.window.fromTime.split(':')[0]
+                  );
+                  startTime.setMinutes(
+                    step.metadata.timeBranch.window.fromTime.split(':')[1]
+                  );
 
-        if (validItem === '' || validItem === undefined || validItem === null)
-          continue;
+                  const endTime = new Date(now.getTime());
+                  endTime.setHours(
+                    step.metadata.timeBranch.window.toTime.split(':')[0]
+                  );
+                  endTime.setMinutes(
+                    step.metadata.timeBranch.window.toTime.split(':')[1]
+                  );
 
-        const keyType = getType(validItem);
-        const isArray = keyType.isArray();
-        let type = isArray ? getType(validItem[0]).name : keyType.name;
+                  const day = now.getDay();
 
-        if (type === 'String') {
-          if (isEmail(validItem)) type = 'Email';
-          if (isDateString(validItem)) type = 'Date';
-        }
+                  if (
+                    !(
+                      startTime < now &&
+                      endTime > now &&
+                      step.metadata.window.onDays[day] === 1
+                    )
+                  ) {
+                    continue;
+                  }
+                }
+                // Case2: Date and time of window
+                else {
+                  if (
+                    !(
+                      new Date(
+                        Temporal.Instant.from(
+                          step.metadata.timeBranch.window.from
+                        ).epochMilliseconds
+                      ).getTime() < Date.now() &&
+                      Date.now() <
+                        new Date(
+                          Temporal.Instant.from(
+                            step.metadata.timeBranch.window.to
+                          ).epochMilliseconds
+                        ).getTime()
+                    )
+                  ) {
+                    continue;
+                  }
+                }
+              }
+              break;
+            case StepType.TIME_WINDOW:
+              // Case 1: Specific days of the week
+              if (step.metadata.window.onDays) {
+                const now = new Date();
 
-        for (const workspaceId of keyCustomerMap[key].values()) {
-          await this.customerKeysModel
-            .updateOne(
-              { key, workspaceId },
-              {
-                $set: {
-                  key,
-                  type,
-                  isArray,
-                  workspaceId,
-                },
+                const startTime = new Date(now.getTime());
+                startTime.setHours(step.metadata.window.fromTime.split(':')[0]);
+                startTime.setMinutes(
+                  step.metadata.window.fromTime.split(':')[1]
+                );
+
+                const endTime = new Date(now.getTime());
+                endTime.setHours(step.metadata.window.toTime.split(':')[0]);
+                endTime.setMinutes(step.metadata.window.toTime.split(':')[1]);
+
+                const day = now.getDay();
+
+                this.warn(
+                  JSON.stringify({ day, startTime, endTime, now, step }),
+                  this.minuteTasks.name,
+                  session
+                );
+
+                if (
+                  !(
+                    startTime < now &&
+                    endTime > now &&
+                    step.metadata.window.onDays[day] === 1
+                  )
+                ) {
+                  continue;
+                }
+              }
+              // Case2: Date and time of window
+              else {
+                if (
+                  !(
+                    new Date(
+                      Temporal.Instant.from(
+                        step.metadata.window.from
+                      ).epochMilliseconds
+                    ).getTime() < Date.now() &&
+                    Date.now() <
+                      new Date(
+                        Temporal.Instant.from(
+                          step.metadata.window.to
+                        ).epochMilliseconds
+                      ).getTime()
+                  )
+                ) {
+                  continue;
+                }
+              }
+              break;
+            case StepType.TIME_DELAY:
+              if (
+                Date.now() - locations[locationsIndex].stepEntry <
+                Temporal.Duration.from(step.metadata.delay).total({
+                  unit: 'millisecond',
+                })
+              ) {
+                continue;
+              }
+              break;
+            default:
+              break;
+          }
+          try {
+            await this.journeyLocationsService.lock(
+              locations[locationsIndex],
+              session,
+              undefined,
+              queryRunner
+            );
+            timeBasedJobs.push({
+              name: String(step.type),
+              data: {
+                step: step,
+                owner:
+                  await this.accountsService.findOrganizationOwnerByWorkspaceId(
+                    step.workspace.id,
+                    session
+                  ),
+                session: session,
+                journey: journeys[journeyIndex],
+                customer: await this.customerModel
+                  .findById(locations[locationsIndex].customer)
+                  .exec(),
+                location: locations[locationsIndex],
+                branch,
               },
-              { upsert: true }
-            )
-            .exec();
+              opts: {
+                jobId: generateUniqueJobId({
+                  step: step,
+                  ownerID: step.workspace.organization.owner.id,
+                  journeyID: journeys[journeyIndex].id,
+                  customerID: locations[locationsIndex].customer,
+                }),
+              },
+            });
+          } catch (e) {
+            this.warn(
+              `Encountered error handling time based steps`,
+              this.minuteTasks.name,
+              session
+            );
+            this.error(e, this.minuteTasks.name, session);
+          }
         }
       }
+      await queryRunner.commitTransaction();
     } catch (e) {
-      this.error(e, this.handleCustomerKeysCron.name, session);
+      timeBasedErr = e;
+      this.warn(
+        `Encountered error handling time based steps`,
+        this.minuteTasks.name,
+        session
+      );
+      this.error(e, this.minuteTasks.name, session);
+      await queryRunner.rollbackTransaction();
+    } finally {
+      await queryRunner.release();
     }
+    if (!timeBasedErr) await this.transitionQueue.addBulk(timeBasedJobs);
+
+    // Handle expiry of recovery emails
+    let recoveryErr: any;
+    try {
+      await this.recoveryRepository
+        .createQueryBuilder()
+        .where(`now() > recovery."createdAt"::TIMESTAMP + INTERVAL '1 HOUR'`)
+        .delete()
+        .execute();
+    } catch (e) {
+      recoveryErr = e;
+      this.warn(
+        `Encountered error handling expiry of recovery emails`,
+        this.minuteTasks.name,
+        session
+      );
+      this.error(e, this.minuteTasks.name, session);
+    }
+
+    // Handle organization invte expiry
+    let orgInviteErr: any;
+    try {
+      await this.organizationInvitesRepository
+        .createQueryBuilder()
+        .where(
+          `now() > organization_invites."createdAt"::TIMESTAMP + INTERVAL '1 DAY'`
+        )
+        .delete()
+        .execute();
+    } catch (e) {
+      orgInviteErr = e;
+      this.warn(
+        `Encountered error handling expiry of organization invites`,
+        this.minuteTasks.name,
+        session
+      );
+      this.error(e, this.minuteTasks.name, session);
+    }
+
+    // Handle requeueing messages for quiet hours/rate limiting
+    let requeueErr: any;
+    queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const requeuedMessages = await this.stepsService.getRequeuedMessages(
+        session,
+        queryRunner
+      );
+      const bulkJobs: { name: string; data: any }[] = [];
+      for (const requeue of requeuedMessages) {
+        // THIS MIGHT BE SLOWER THAN WE WANT querying for the customer from mongo.
+        // findAndLock only uses customer.id, but the function currently
+        // only accepts the whole customer document. Consider changing
+        const customer = await this.customersService.findByCustomerId(
+          requeue.customerId,
+          undefined
+        );
+        await this.journeyLocationsService.findAndLock(
+          requeue.step.journey,
+          customer,
+          session,
+          requeue?.workspace?.organization?.owner,
+          queryRunner
+        );
+        await bulkJobs.push({
+          name: StepType.MESSAGE,
+          data: {
+            owner: requeue.workspace?.organization?.owner,
+            journey: requeue.step.journey,
+            step: requeue.step,
+            session,
+            customerID: requeue.customerId,
+          },
+        });
+        await queryRunner.manager.remove(requeue);
+      }
+      await this.transitionQueue.addBulk(bulkJobs);
+      await queryRunner.commitTransaction();
+    } catch (e) {
+      requeueErr = e;
+      this.warn(
+        `Encountered error requeueing messages`,
+        this.minuteTasks.name,
+        session
+      );
+      this.error(e, this.minuteTasks.name, session);
+      await queryRunner.rollbackTransaction();
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  printTimeoutLength() {
+    const session = randomUUID();
+    this.log(
+      `Number of timeouts: ${global.timeoutIds.size}`,
+      this.printTimeoutLength.name,
+      session
+    );
+    this.log(
+      `Number of intervals: ${global.intervalIds.size}`,
+      this.printTimeoutLength.name,
+      session
+    );
+
+    // let timeoutID = +(setTimeout(function () { }, 0));
+    // let intervalID = +(setInterval(function () { }, 0));
+
+    // while (timeoutID--) {
+    //   clearTimeout(timeoutID); // will do nothing if no timeout with id is present
+    // }
+
+    // while (intervalID--) {
+    //   clearTimeout(intervalID); // will do nothing if no timeout with id is present
+    // }
   }
 
   @Cron(CronExpression.EVERY_HOUR)
@@ -369,96 +737,21 @@ export class CronService {
     }
   }
 
-  @Cron(CronExpression.EVERY_MINUTE)
-  async handleTimeBasedSteps() {
-    let err: any;
-    const session = randomUUID();
-    const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
-    await queryRunner.startTransaction();
-    try {
-      const journeys = await this.journeysService.allActiveTransactional(
-        queryRunner
-      );
-      for (
-        let journeyIndex = 0;
-        journeyIndex < journeys.length;
-        journeyIndex++
-      ) {
-        const locations =
-          await this.journeyLocationsService.findAllStaticCustomersInTimeBasedSteps(
-            journeys[journeyIndex],
-            session,
-            queryRunner
-          );
-        for (
-          let locationsIndex = 0;
-          locationsIndex < locations.length;
-          locationsIndex++
-        ) {
-          const step = await this.stepsService.findByID(
-            String(locations[locationsIndex].step),
-            session,
-            null,
-            queryRunner
-          );
-          let branch;
-          // Set branch to -1 for wait until
-          if (step.type === StepType.WAIT_UNTIL_BRANCH) {
-            //Wait until time branch isnt set, continue
-            if (!step.metadata.timeBranch) {
-              continue;
-            }
-            branch = -1;
-          }
-          try {
-            await this.journeyLocationsService.lock(
-              locations[locationsIndex],
-              session,
-              undefined,
-              queryRunner
-            );
-            this.transitionQueue.add(step.type, {
-              step: step,
-              ownerID: step.workspace.organization.owner.id,
-              session: session,
-              journeyID: journeys[journeyIndex].id,
-              customerID: locations[locationsIndex].customer,
-              branch,
-            });
-          } catch (e) {
-            this.error(e, this.handleTimeBasedSteps.name, session);
-          }
-        }
-      }
-      await queryRunner.commitTransaction();
-    } catch (e) {
-      err = e;
-      this.error(e, this.handleTimeBasedSteps.name, session);
-      await queryRunner.rollbackTransaction();
-    } finally {
-      await queryRunner.release();
-      if (err) throw err;
-    }
-  }
-
- /*
-  * helper function that deletes
-  *
-  */
+  /*
+   * helper function that deletes
+   *
+   */
 
   checkSegmentHasMessageFilters(
     segmentCriteria: any,
     orgId: string,
     session: string
   ): boolean {
-
-      // Convert the segmentCriteria object to a JSON string
+    // Convert the segmentCriteria object to a JSON string
     const criteriaString = JSON.stringify(segmentCriteria);
 
     // Check for the presence of any of the specified types in the string
     return /"type":\s*"(Email|Push|In-app message|SMS)"/.test(criteriaString);
-
   }
   /*
    *
@@ -485,26 +778,25 @@ export class CronService {
     // to do change this to organisations rather than
     const accounts = await this.accountsService.findAll();
     for (let j = 0; j < accounts.length; j++) {
-      let queryRunner = this.dataSource.createQueryRunner();
+      const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
-      let segmentPrefixes : string[] = [];
+      const segmentPrefixes: string[] = [];
       //we keep for logging
-      let segmentError : string
+      let segmentError: string;
       try {
-        let segments = await this.segmentsService.getSegments(
+        const segments = await this.segmentsService.getSegments(
           accounts[j],
           undefined,
           queryRunner
         );
         // for each segment check if it has a message component
         for (const segment of segments) {
-
           if (!segment.inclusionCriteria || !segment.inclusionCriteria.query) {
             continue; // Skip to the next iteration of the loop
           }
-          
-          let doInclude = this.checkSegmentHasMessageFilters(
+
+          const doInclude = this.checkSegmentHasMessageFilters(
             segment.inclusionCriteria.query,
             accounts[j].id,
             session
@@ -581,10 +873,8 @@ export class CronService {
           accounts[j].id
         );
         //drop extraneous collections in case of error
-        for(const prefix of segmentPrefixes) {
-          await this.segmentsService.deleteCollectionsWithPrefix(
-            prefix
-          );
+        for (const prefix of segmentPrefixes) {
+          await this.segmentsService.deleteCollectionsWithPrefix(prefix);
         }
         await queryRunner.rollbackTransaction();
         err = error;
@@ -594,384 +884,354 @@ export class CronService {
     }
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_NOON)
-  async handleMissedMailgunEvents() {
-    const session = randomUUID();
-    try {
-      // Get all pending Mailgun Jobs and accounts
-      const mailgunJobs = await this.webhookJobsService.findAllByProvider(
-        WebhookProvider.MAILGUN
-      );
-      const accounts = await this.accountsService.findAll();
+  // @Cron(CronExpression.EVERY_DAY_AT_NOON)
+  // async handleMissedMailgunEvents() {
+  //   const session = randomUUID();
+  //   try {
+  //     // Get all pending Mailgun Jobs and accounts
+  //     const mailgunJobs = await this.webhookJobsService.findAllByProvider(
+  //       WebhookProvider.MAILGUN
+  //     );
+  //     const accounts = await this.accountsService.findAll();
 
-      // Create new pending Mailgun Job
-      await this.webhookJobsService.create({
-        provider: WebhookProvider.MAILGUN,
-        status: WebhookJobStatus.PENDING,
-      });
+  //     // Create new pending Mailgun Job
+  //     await this.webhookJobsService.create({
+  //       provider: WebhookProvider.MAILGUN,
+  //       status: WebhookJobStatus.PENDING,
+  //     });
 
-      // Iterate through Jobs
-      for (let i = 0; i < mailgunJobs.length; i++) {
-        const startTime = mailgunJobs[i].createdAt;
+  //     // Iterate through Jobs
+  //     for (let i = 0; i < mailgunJobs.length; i++) {
+  //       const startTime = mailgunJobs[i].createdAt;
 
-        // Update job status
-        await this.webhookJobsService.update(mailgunJobs[i].id, {
-          status: WebhookJobStatus.IN_PROGRESS,
-        });
+  //       // Update job status
+  //       await this.webhookJobsService.update(mailgunJobs[i].id, {
+  //         status: WebhookJobStatus.IN_PROGRESS,
+  //       });
 
-        //Iterate through accounts
-        for (let j = 0; j < accounts.length; j++) {
-          if (
-            accounts[j]?.teams?.[0]?.organization?.workspaces?.[0]
-              .mailgunAPIKey &&
-            accounts[j]?.teams?.[0]?.organization?.workspaces?.[0].sendingDomain
-          ) {
-            const mailgun = new Mailgun(formData);
-            const mg = mailgun.client({
-              username: 'api',
-              key: accounts[j]?.teams?.[0]?.organization?.workspaces?.[0]
-                .mailgunAPIKey,
-            });
-            let query, events;
-            query = {
-              begin: startTime.toUTCString(),
-              limit: 300,
-              ascending: 'yes',
-            };
-            do {
-              events = await mg.events.get(
-                accounts[j]?.teams?.[0]?.organization?.workspaces?.[0]
-                  ?.sendingDomain,
-                query
-              );
-              for (let k = 0; k < events.items.length; k++) {
-                const existsCheck = await this.clickHouseClient.query({
-                  query: `SELECT * FROM message_status WHERE event = {event:String} AND messageId = {messageId:String}`,
-                  query_params: {
-                    event: events.items[k].event,
-                    messageId: events.items[k].message.headers['message-id'],
-                  },
-                });
-                const existsRows = JSON.parse(await existsCheck.text());
-                if (existsRows.data.length == 0) {
-                  const messageInfo = await this.clickHouseClient.query({
-                    query: `SELECT * FROM message_status WHERE messageId = {messageId:String} AND audienceId IS NOT NULL AND customerId IS NOT NULL AND templateId IS NOT NULL LIMIT 1`,
-                    query_params: {
-                      messageId: events.items[k].message.headers['message-id'],
-                    },
-                  });
-                  const messageRow = JSON.parse(await messageInfo.text()).data;
-                  const messagesToInsert: ClickHouseMessage[] = [];
-                  const clickHouseRecord: ClickHouseMessage = {
-                    workspaceId:
-                      accounts[j]?.teams?.[0]?.organization?.workspaces?.[0].id,
-                    audienceId: messageRow[0]?.audienceId,
-                    customerId: messageRow[0]?.customerId,
-                    templateId: messageRow[0]?.templateId,
-                    messageId: events.items[k].message.headers['message-id'],
-                    event: events.items[k].event,
-                    eventProvider: ClickHouseEventProvider.MAILGUN,
-                    createdAt: new Date(
-                      events.items[k].timestamp * 1000
-                    ).toISOString(),
-                    processed: false,
-                  };
-                  messagesToInsert.push(clickHouseRecord);
-                  await this.clickHouseClient.insert<ClickHouseMessage>({
-                    table: 'message_status',
-                    values: messagesToInsert,
-                    format: 'JSONEachRow',
-                  });
-                }
-              }
-              query = { page: events.pages.next.number };
-            } while (events?.items?.length > 0 && query.page);
-          }
-        }
-        await this.webhookJobsService.remove(mailgunJobs[i].id);
-      }
-    } catch (err) {
-      this.error(err, this.handleMissedMailgunEvents.name, session);
-    }
-  }
+  //       //Iterate through accounts
+  //       for (let j = 0; j < accounts.length; j++) {
+  //         if (
+  //           accounts[j]?.teams?.[0]?.organization?.workspaces?.[0]
+  //             .mailgunAPIKey &&
+  //           accounts[j]?.teams?.[0]?.organization?.workspaces?.[0].sendingDomain
+  //         ) {
+  //           const mailgun = new Mailgun(formData);
+  //           const mg = mailgun.client({
+  //             username: 'api',
+  //             key: accounts[j]?.teams?.[0]?.organization?.workspaces?.[0]
+  //               .mailgunAPIKey,
+  //           });
+  //           let query, events;
+  //           query = {
+  //             begin: startTime.toUTCString(),
+  //             limit: 300,
+  //             ascending: 'yes',
+  //           };
+  //           do {
+  //             events = await mg.events.get(
+  //               accounts[j]?.teams?.[0]?.organization?.workspaces?.[0]
+  //                 ?.sendingDomain,
+  //               query
+  //             );
+  //             for (let k = 0; k < events.items.length; k++) {
+  //               const existsCheck = await this.clickHouseClient.query({
+  //                 query: `SELECT * FROM message_status WHERE event = {event:String} AND messageId = {messageId:String}`,
+  //                 query_params: {
+  //                   event: events.items[k].event,
+  //                   messageId: events.items[k].message.headers['message-id'],
+  //                 },
+  //               });
+  //               const existsRows = JSON.parse(await existsCheck.text());
+  //               if (existsRows.data.length == 0) {
+  //                 const messageInfo = await this.clickHouseClient.query({
+  //                   query: `SELECT * FROM message_status WHERE messageId = {messageId:String} AND audienceId IS NOT NULL AND customerId IS NOT NULL AND templateId IS NOT NULL LIMIT 1`,
+  //                   query_params: {
+  //                     messageId: events.items[k].message.headers['message-id'],
+  //                   },
+  //                 });
+  //                 const messageRow = JSON.parse(await messageInfo.text()).data;
+  //                 const messagesToInsert: ClickHouseMessage[] = [];
+  //                 const clickHouseRecord: ClickHouseMessage = {
+  //                   workspaceId:
+  //                     accounts[j]?.teams?.[0]?.organization?.workspaces?.[0].id,
+  //                   audienceId: messageRow[0]?.audienceId,
+  //                   customerId: messageRow[0]?.customerId,
+  //                   templateId: messageRow[0]?.templateId,
+  //                   messageId: events.items[k].message.headers['message-id'],
+  //                   event: events.items[k].event,
+  //                   eventProvider: ClickHouseEventProvider.MAILGUN,
+  //                   createdAt: new Date(
+  //                     events.items[k].timestamp * 1000
+  //                   ).toISOString(),
+  //                   processed: false,
+  //                 };
+  //                 messagesToInsert.push(clickHouseRecord);
+  //                 await this.clickHouseClient.insert<ClickHouseMessage>({
+  //                   table: 'message_status',
+  //                   values: messagesToInsert,
+  //                   format: 'JSONEachRow',
+  //                 });
+  //               }
+  //             }
+  //             query = { page: events.pages.next.number };
+  //           } while (events?.items?.length > 0 && query.page);
+  //         }
+  //       }
+  //       await this.webhookJobsService.remove(mailgunJobs[i].id);
+  //     }
+  //   } catch (err) {
+  //     this.error(err, this.handleMissedMailgunEvents.name, session);
+  //   }
+  // }
 
-  @Cron(CronExpression.EVERY_DAY_AT_NOON)
-  async handleMissedSendgridEvents() {
-    const session = randomUUID();
-    try {
-      // Get all pending Twilio Jobs and accounts
-      const sendgridJobs = await this.webhookJobsService.findAllByProvider(
-        WebhookProvider.SENDGRID
-      );
-      const accounts = await this.accountsService.findAll();
+  // @Cron(CronExpression.EVERY_DAY_AT_NOON)
+  // async handleMissedSendgridEvents() {
+  //   const session = randomUUID();
+  //   try {
+  //     // Get all pending Twilio Jobs and accounts
+  //     const sendgridJobs = await this.webhookJobsService.findAllByProvider(
+  //       WebhookProvider.SENDGRID
+  //     );
+  //     const accounts = await this.accountsService.findAll();
 
-      // Create new pending Twilio Job
-      await this.webhookJobsService.create({
-        provider: WebhookProvider.SENDGRID,
-        status: WebhookJobStatus.PENDING,
-      });
+  //     // Create new pending Twilio Job
+  //     await this.webhookJobsService.create({
+  //       provider: WebhookProvider.SENDGRID,
+  //       status: WebhookJobStatus.PENDING,
+  //     });
 
-      // Iterate through Jobs
-      for (let i = 0; i < sendgridJobs.length; i++) {
-        // Update job status
-        await this.webhookJobsService.update(sendgridJobs[i].id, {
-          status: WebhookJobStatus.IN_PROGRESS,
-        });
+  //     // Iterate through Jobs
+  //     for (let i = 0; i < sendgridJobs.length; i++) {
+  //       // Update job status
+  //       await this.webhookJobsService.update(sendgridJobs[i].id, {
+  //         status: WebhookJobStatus.IN_PROGRESS,
+  //       });
 
-        //Iterate through accounts
-        for (let j = 0; j < accounts.length; j++) {
-          if (
-            accounts[j].teams?.[0]?.organization?.workspaces?.[0].sendgridApiKey
-          ) {
-            client.setApiKey(
-              accounts[j].teams?.[0]?.organization?.workspaces?.[0]
-                .sendgridApiKey
-            );
-            const resultSet = await this.clickHouseClient.query({
-              query: `SELECT * FROM message_status WHERE processed = false AND eventProvider = 'sendgrid' AND workspaceId = {workspaceId:String}`,
-              query_params: {
-                workspaceId:
-                  accounts[j].teams?.[0]?.organization?.workspaces?.[0].id,
-              },
-              format: 'JSONEachRow',
-            });
-            for await (const rows of resultSet.stream()) {
-              rows.forEach(async (row) => {
-                const rowObject = JSON.parse(row.text);
-                // Step 1: Check if the message has already reached an end state: delivered, undelivered, failed, canceled
-                const existsCheck = await this.clickHouseClient.query({
-                  query: `SELECT * FROM message_status WHERE event IN ('dropped', 'bounce', 'blocked', 'open', 'click', 'spamreport', 'unsubscribe','group_unsubscribe','group_resubscribe') AND messageId = {messageId:String}`,
-                  query_params: { messageId: rowObject.messageId },
-                });
-                const existsRows = JSON.parse(await existsCheck.text());
+  //       //Iterate through accounts
+  //       for (let j = 0; j < accounts.length; j++) {
+  //         if (
+  //           accounts[j].teams?.[0]?.organization?.workspaces?.[0].sendgridApiKey
+  //         ) {
+  //           client.setApiKey(
+  //             accounts[j].teams?.[0]?.organization?.workspaces?.[0]
+  //               .sendgridApiKey
+  //           );
+  //           const resultSet = await this.clickHouseClient.query({
+  //             query: `SELECT * FROM message_status WHERE processed = false AND eventProvider = 'sendgrid' AND workspaceId = {workspaceId:String}`,
+  //             query_params: {
+  //               workspaceId:
+  //                 accounts[j].teams?.[0]?.organization?.workspaces?.[0].id,
+  //             },
+  //             format: 'JSONEachRow',
+  //           });
+  //           for await (const rows of resultSet.stream()) {
+  //             rows.forEach(async (row) => {
+  //               const rowObject = JSON.parse(row.text);
+  //               // Step 1: Check if the message has already reached an end state: delivered, undelivered, failed, canceled
+  //               const existsCheck = await this.clickHouseClient.query({
+  //                 query: `SELECT * FROM message_status WHERE event IN ('dropped', 'bounce', 'blocked', 'open', 'click', 'spamreport', 'unsubscribe','group_unsubscribe','group_resubscribe') AND messageId = {messageId:String}`,
+  //                 query_params: { messageId: rowObject.messageId },
+  //               });
+  //               const existsRows = JSON.parse(await existsCheck.text());
 
-                // If not reached end state, check if reached end state using API
-                if (existsRows.data.length === 0) {
-                  let message;
-                  try {
-                    const response: any = await client.request({
-                      url: `/v3/messages`,
-                      method: 'GET',
-                      qs: {
-                        query: `msg_id=${rowObject.messageId}`,
-                      },
-                    });
-                    message = response.body.messages[0];
-                  } catch (err) {
-                    // User is unauthorized to use events api, so we return
-                    return;
-                  }
+  //               // If not reached end state, check if reached end state using API
+  //               if (existsRows.data.length === 0) {
+  //                 let message;
+  //                 try {
+  //                   const response: any = await client.request({
+  //                     url: `/v3/messages`,
+  //                     method: 'GET',
+  //                     qs: {
+  //                       query: `msg_id=${rowObject.messageId}`,
+  //                     },
+  //                   });
+  //                   message = response.body.messages[0];
+  //                 } catch (err) {
+  //                   // User is unauthorized to use events api, so we return
+  //                   return;
+  //                 }
 
-                  // Reached end state using API; update end state and set as processed in clickhouse
-                  if (
-                    ['delivered', 'dropped', 'bounce', 'blocked'].includes(
-                      message.status
-                    )
-                  ) {
-                    const messagesToInsert: ClickHouseMessage[] = [];
-                    const clickHouseRecord: ClickHouseMessage = {
-                      audienceId: rowObject.audienceId,
-                      customerId: rowObject.customerId,
-                      templateId: rowObject.templateId,
-                      messageId: rowObject.messageId,
-                      event: message.status,
-                      eventProvider: ClickHouseEventProvider.TWILIO,
-                      createdAt: new Date().toISOString(),
-                      workspaceId:
-                        accounts[j].teams?.[0]?.organization?.workspaces?.[0]
-                          ?.id,
-                      processed: false,
-                    };
-                    messagesToInsert.push(clickHouseRecord);
-                    await this.clickHouseClient.insert<ClickHouseMessage>({
-                      table: 'message_status',
-                      values: messagesToInsert,
-                      format: 'JSONEachRow',
-                    });
-                    await this.clickHouseClient.query({
-                      query: `ALTER TABLE message_status UPDATE processed=true WHERE eventProvider='sendgrid' AND event = 'sent' AND messageId = {messageId:String} AND templateId = {templateId:String} AND customerId = {customerId:String} AND audienceId = {audienceId:String}`,
-                      query_params: {
-                        messageId: rowObject.messageId,
-                        templateId: rowObject.templateId,
-                        customerId: rowObject.customerId,
-                        audienceId: rowObject.audienceId,
-                      },
-                    });
-                  }
-                  //Has not reached end state; do nothing
-                }
-                // Has reached end state using webhooks; update processed = true
-                else {
-                  await this.clickHouseClient.query({
-                    query: `ALTER TABLE message_status UPDATE processed=true WHERE eventProvider='sendgrid' AND event = 'sent' AND messageId = {messageId:String} AND templateId = {templateId:String} AND customerId = {customerId:String} AND audienceId = {audienceId:String}`,
-                    query_params: {
-                      messageId: rowObject.messageId,
-                      templateId: rowObject.templateId,
-                      customerId: rowObject.customerId,
-                      audienceId: rowObject.audienceId,
-                    },
-                  });
-                }
-              });
-            }
-          }
-        }
-        await this.webhookJobsService.remove(sendgridJobs[i].id);
-      }
-    } catch (err) {
-      this.error(err, this.handleMissedSendgridEvents.name, session);
-    }
-  }
+  //                 // Reached end state using API; update end state and set as processed in clickhouse
+  //                 if (
+  //                   ['delivered', 'dropped', 'bounce', 'blocked'].includes(
+  //                     message.status
+  //                   )
+  //                 ) {
+  //                   const messagesToInsert: ClickHouseMessage[] = [];
+  //                   const clickHouseRecord: ClickHouseMessage = {
+  //                     audienceId: rowObject.audienceId,
+  //                     customerId: rowObject.customerId,
+  //                     templateId: rowObject.templateId,
+  //                     messageId: rowObject.messageId,
+  //                     event: message.status,
+  //                     eventProvider: ClickHouseEventProvider.TWILIO,
+  //                     createdAt: new Date().toISOString(),
+  //                     workspaceId:
+  //                       accounts[j].teams?.[0]?.organization?.workspaces?.[0]
+  //                         ?.id,
+  //                     processed: false,
+  //                   };
+  //                   messagesToInsert.push(clickHouseRecord);
+  //                   await this.clickHouseClient.insert<ClickHouseMessage>({
+  //                     table: 'message_status',
+  //                     values: messagesToInsert,
+  //                     format: 'JSONEachRow',
+  //                   });
+  //                   await this.clickHouseClient.query({
+  //                     query: `ALTER TABLE message_status UPDATE processed=true WHERE eventProvider='sendgrid' AND event = 'sent' AND messageId = {messageId:String} AND templateId = {templateId:String} AND customerId = {customerId:String} AND audienceId = {audienceId:String}`,
+  //                     query_params: {
+  //                       messageId: rowObject.messageId,
+  //                       templateId: rowObject.templateId,
+  //                       customerId: rowObject.customerId,
+  //                       audienceId: rowObject.audienceId,
+  //                     },
+  //                   });
+  //                 }
+  //                 //Has not reached end state; do nothing
+  //               }
+  //               // Has reached end state using webhooks; update processed = true
+  //               else {
+  //                 await this.clickHouseClient.query({
+  //                   query: `ALTER TABLE message_status UPDATE processed=true WHERE eventProvider='sendgrid' AND event = 'sent' AND messageId = {messageId:String} AND templateId = {templateId:String} AND customerId = {customerId:String} AND audienceId = {audienceId:String}`,
+  //                   query_params: {
+  //                     messageId: rowObject.messageId,
+  //                     templateId: rowObject.templateId,
+  //                     customerId: rowObject.customerId,
+  //                     audienceId: rowObject.audienceId,
+  //                   },
+  //                 });
+  //               }
+  //             });
+  //           }
+  //         }
+  //       }
+  //       await this.webhookJobsService.remove(sendgridJobs[i].id);
+  //     }
+  //   } catch (err) {
+  //     this.error(err, this.handleMissedSendgridEvents.name, session);
+  //   }
+  // }
 
-  @Cron(CronExpression.EVERY_DAY_AT_NOON)
-  async handleMissedTwilioEvents() {
-    const session = randomUUID();
-    try {
-      // Get all pending Twilio Jobs and accounts
-      const twilioJobs = await this.webhookJobsService.findAllByProvider(
-        WebhookProvider.TWILIO_SMS
-      );
-      const accounts = await this.accountsService.findAll();
+  // @Cron(CronExpression.EVERY_DAY_AT_NOON)
+  // async handleMissedTwilioEvents() {
+  //   const session = randomUUID();
+  //   try {
+  //     // Get all pending Twilio Jobs and accounts
+  //     const twilioJobs = await this.webhookJobsService.findAllByProvider(
+  //       WebhookProvider.TWILIO_SMS
+  //     );
+  //     const accounts = await this.accountsService.findAll();
 
-      // Create new pending Twilio Job
-      await this.webhookJobsService.create({
-        provider: WebhookProvider.TWILIO_SMS,
-        status: WebhookJobStatus.PENDING,
-      });
+  //     // Create new pending Twilio Job
+  //     await this.webhookJobsService.create({
+  //       provider: WebhookProvider.TWILIO_SMS,
+  //       status: WebhookJobStatus.PENDING,
+  //     });
 
-      // Iterate through Jobs
-      for (let i = 0; i < twilioJobs.length; i++) {
-        // Update job status
-        await this.webhookJobsService.update(twilioJobs[i].id, {
-          status: WebhookJobStatus.IN_PROGRESS,
-        });
+  //     // Iterate through Jobs
+  //     for (let i = 0; i < twilioJobs.length; i++) {
+  //       // Update job status
+  //       await this.webhookJobsService.update(twilioJobs[i].id, {
+  //         status: WebhookJobStatus.IN_PROGRESS,
+  //       });
 
-        //Iterate through accounts
-        for (let j = 0; j < accounts.length; j++) {
-          const workspace =
-            accounts[j].teams?.[0]?.organization?.workspaces?.[0];
-          if (workspace.smsAccountSid && workspace.smsAuthToken) {
-            const twilioClient = twilio(
-              workspace.smsAccountSid,
-              workspace.smsAuthToken
-            );
-            const resultSet = await this.clickHouseClient.query({
-              query: `SELECT * FROM message_status WHERE processed = false AND eventProvider = 'twilio' AND workspaceId = {workspaceId:String}`,
-              query_params: {
-                workspaceId:
-                  accounts[j].teams?.[0]?.organization?.workspaces?.[0]?.id,
-              },
-              format: 'JSONEachRow',
-            });
-            for await (const rows of resultSet.stream()) {
-              rows.forEach(async (row) => {
-                const rowObject = JSON.parse(row.text);
-                // Step 1: Check if the message has already reached an end state: delivered, undelivered, failed, canceled
-                const existsCheck = await this.clickHouseClient.query({
-                  query: `SELECT * FROM message_status WHERE event IN ('delivered', 'undelivered', 'failed', 'canceled') AND messageId = {messageId:String}`,
-                  query_params: { messageId: rowObject.messageId },
-                });
-                const existsRows = JSON.parse(await existsCheck.text());
-                if (existsRows.data.length === 0) {
-                  const message = await twilioClient
-                    .messages(rowObject.messageId)
-                    .fetch();
-                  if (
-                    ['delivered', 'undelivered', 'failed', 'canceled'].includes(
-                      message.status
-                    )
-                  ) {
-                    const messagesToInsert: ClickHouseMessage[] = [];
-                    const clickHouseRecord: ClickHouseMessage = {
-                      audienceId: rowObject.audienceId,
-                      customerId: rowObject.customerId,
-                      templateId: rowObject.templateId,
-                      messageId: rowObject.messageId,
-                      event: message.status,
-                      eventProvider: ClickHouseEventProvider.TWILIO,
-                      createdAt: new Date().toISOString(),
-                      workspaceId:
-                        accounts[j].teams?.[0]?.organization?.workspaces?.[0]
-                          .id,
-                      processed: false,
-                    };
-                    messagesToInsert.push(clickHouseRecord);
-                    await this.clickHouseClient.insert<ClickHouseMessage>({
-                      table: 'message_status',
-                      values: messagesToInsert,
-                      format: 'JSONEachRow',
-                    });
-                    await this.clickHouseClient.query({
-                      query: `ALTER TABLE message_status UPDATE processed=true WHERE eventProvider='twilio' AND event = 'sent' AND messageId = {messageId:String} AND templateId = {templateId:String} AND customerId = {customerId:String} AND audienceId = {audienceId:String}`,
-                      query_params: {
-                        messageId: rowObject.messageId,
-                        templateId: rowObject.templateId,
-                        customerId: rowObject.customerId,
-                        audienceId: rowObject.audienceId,
-                      },
-                    });
-                  }
-                } else {
-                  await this.clickHouseClient.query({
-                    query: `ALTER TABLE message_status UPDATE processed=true WHERE eventProvider='twilio' AND event = 'sent' AND messageId = {messageId:String} AND templateId = {templateId:String} AND customerId = {customerId:String} AND audienceId = {audienceId:String}`,
-                    query_params: {
-                      messageId: rowObject.messageId,
-                      templateId: rowObject.templateId,
-                      customerId: rowObject.customerId,
-                      audienceId: rowObject.audienceId,
-                    },
-                  });
-                }
-              });
-            }
-          }
-        }
-        await this.webhookJobsService.remove(twilioJobs[i].id);
-      }
-    } catch (err) {
-      this.error(err, this.handleMissedTwilioEvents.name, session);
-    }
-  }
+  //       //Iterate through accounts
+  //       for (let j = 0; j < accounts.length; j++) {
+  //         const workspace =
+  //           accounts[j].teams?.[0]?.organization?.workspaces?.[0];
+  //         if (workspace.smsAccountSid && workspace.smsAuthToken) {
+  //           const twilioClient = twilio(
+  //             workspace.smsAccountSid,
+  //             workspace.smsAuthToken
+  //           );
+  //           const resultSet = await this.clickHouseClient.query({
+  //             query: `SELECT * FROM message_status WHERE processed = false AND eventProvider = 'twilio' AND workspaceId = {workspaceId:String}`,
+  //             query_params: {
+  //               workspaceId:
+  //                 accounts[j].teams?.[0]?.organization?.workspaces?.[0]?.id,
+  //             },
+  //             format: 'JSONEachRow',
+  //           });
+  //           for await (const rows of resultSet.stream()) {
+  //             rows.forEach(async (row) => {
+  //               const rowObject = JSON.parse(row.text);
+  //               // Step 1: Check if the message has already reached an end state: delivered, undelivered, failed, canceled
+  //               const existsCheck = await this.clickHouseClient.query({
+  //                 query: `SELECT * FROM message_status WHERE event IN ('delivered', 'undelivered', 'failed', 'canceled') AND messageId = {messageId:String}`,
+  //                 query_params: { messageId: rowObject.messageId },
+  //               });
+  //               const existsRows = JSON.parse(await existsCheck.text());
+  //               if (existsRows.data.length === 0) {
+  //                 const message = await twilioClient
+  //                   .messages(rowObject.messageId)
+  //                   .fetch();
+  //                 if (
+  //                   ['delivered', 'undelivered', 'failed', 'canceled'].includes(
+  //                     message.status
+  //                   )
+  //                 ) {
+  //                   const messagesToInsert: ClickHouseMessage[] = [];
+  //                   const clickHouseRecord: ClickHouseMessage = {
+  //                     audienceId: rowObject.audienceId,
+  //                     customerId: rowObject.customerId,
+  //                     templateId: rowObject.templateId,
+  //                     messageId: rowObject.messageId,
+  //                     event: message.status,
+  //                     eventProvider: ClickHouseEventProvider.TWILIO,
+  //                     createdAt: new Date().toISOString(),
+  //                     workspaceId:
+  //                       accounts[j].teams?.[0]?.organization?.workspaces?.[0]
+  //                         .id,
+  //                     processed: false,
+  //                   };
+  //                   messagesToInsert.push(clickHouseRecord);
+  //                   await this.clickHouseClient.insert<ClickHouseMessage>({
+  //                     table: 'message_status',
+  //                     values: messagesToInsert,
+  //                     format: 'JSONEachRow',
+  //                   });
+  //                   await this.clickHouseClient.query({
+  //                     query: `ALTER TABLE message_status UPDATE processed=true WHERE eventProvider='twilio' AND event = 'sent' AND messageId = {messageId:String} AND templateId = {templateId:String} AND customerId = {customerId:String} AND audienceId = {audienceId:String}`,
+  //                     query_params: {
+  //                       messageId: rowObject.messageId,
+  //                       templateId: rowObject.templateId,
+  //                       customerId: rowObject.customerId,
+  //                       audienceId: rowObject.audienceId,
+  //                     },
+  //                   });
+  //                 }
+  //               } else {
+  //                 await this.clickHouseClient.query({
+  //                   query: `ALTER TABLE message_status UPDATE processed=true WHERE eventProvider='twilio' AND event = 'sent' AND messageId = {messageId:String} AND templateId = {templateId:String} AND customerId = {customerId:String} AND audienceId = {audienceId:String}`,
+  //                   query_params: {
+  //                     messageId: rowObject.messageId,
+  //                     templateId: rowObject.templateId,
+  //                     customerId: rowObject.customerId,
+  //                     audienceId: rowObject.audienceId,
+  //                   },
+  //                 });
+  //               }
+  //             });
+  //           }
+  //         }
+  //       }
+  //       await this.webhookJobsService.remove(twilioJobs[i].id);
+  //     }
+  //   } catch (err) {
+  //     this.error(err, this.handleMissedTwilioEvents.name, session);
+  //   }
+  // }
 
-  @Cron(CronExpression.EVERY_MINUTE)
-  async handleRecovery() {
-    const session = randomUUID();
-    try {
-      await this.recoveryRepository
-        .createQueryBuilder()
-        .where(`now() > recovery."createdAt"::TIMESTAMP + INTERVAL '1 HOUR'`)
-        .delete()
-        .execute();
-    } catch (e) {
-      this.error(e, this.handleRecovery.name, session);
-    }
-  }
-
-  @Cron(CronExpression.EVERY_MINUTE)
-  async handleOrganizationInvites() {
-    const session = randomUUID();
-    try {
-      await this.organizationInvitesRepository
-        .createQueryBuilder()
-        .where(
-          `now() > organization_invites."createdAt"::TIMESTAMP + INTERVAL '1 DAY'`
-        )
-        .delete()
-        .execute();
-    } catch (e) {
-      this.error(e, this.handleOrganizationInvites.name, session);
-    }
-  }
-
-  @Cron(CronExpression.EVERY_MINUTE)
-  async handleExpiredModalEvents() {
-    const session = randomUUID();
-    try {
-      await this.modalsService.deleteExpiredModalEvents();
-    } catch (e) {
-      this.error(e, this.handleExpiredModalEvents.name, session);
-    }
-  }
+  // @Cron(CronExpression.EVERY_MINUTE)
+  // async handleExpiredModalEvents() {
+  //   const session = randomUUID();
+  //   try {
+  //     await this.modalsService.deleteExpiredModalEvents();
+  //   } catch (e) {
+  //     this.error(e, this.handleExpiredModalEvents.name, session);
+  //   }
+  // }
 
   @Cron(CronExpression.EVERY_30_MINUTES)
   async cleanTrashSteps() {
@@ -987,7 +1247,7 @@ export class CronService {
             FROM journey
             WHERE "isActive" = true or "isPaused" = true or "isStopped" = true or "isDeleted" = true
         )
-        
+
         , step_ids_to_keep AS (
             SELECT 
                 aj.id as journey_id,
@@ -996,7 +1256,7 @@ export class CronService {
             CROSS JOIN LATERAL jsonb_array_elements("visualLayout"->'nodes') as node
             WHERE node->'data' ? 'stepId'
         )
-        
+
         DELETE FROM step s
         WHERE s."journeyId" IN (SELECT id FROM active_journeys)
         AND (s."journeyId", s.id) NOT IN (SELECT journey_id, step_id FROM step_ids_to_keep);
@@ -1015,74 +1275,23 @@ export class CronService {
     }
   }
 
-  @Cron(CronExpression.EVERY_30_SECONDS)
-  async requeueMessages() {
-    const session = randomUUID();
-    const queryRunner = this.dataSource.createQueryRunner();
-    try {
-      await queryRunner.connect();
-      await queryRunner.startTransaction();
-      const requeuedMessages = await this.stepsService.getRequeuedMessages(
-        session,
-        queryRunner
-      );
-      this.log(
-        `Checking for messages to requeue... ${requeuedMessages.length} found`,
-        this.requeueMessages.name,
-        session
-      );
-      const bulkJobs: { name: string; data: any }[] = [];
-      for (const requeue of requeuedMessages) {
-        // THIS MIGHT BE SLOWER THAN WE WANT querying for the customer from mongo.
-        // findAndLock only uses customer.id, but the function currently
-        // only accepts the whole customer document. Consider changing
-        const customer = await this.customersService.findByCustomerId(
-          requeue.customerId,
-          undefined
-        );
-        await this.journeyLocationsService.findAndLock(
-          requeue.step.journey,
-          customer,
-          session,
-          requeue?.workspace?.organization?.owner,
-          queryRunner
-        );
-        await bulkJobs.push({
-          name: StepType.MESSAGE,
-          data: {
-            ownerId: requeue.workspace?.organization?.owner.id,
-            journeyID: requeue.step.journey.id,
-            step: requeue.step,
-            session,
-            customerID: requeue.customerId,
-          },
-        });
-        await queryRunner.manager.remove(requeue);
-      }
-      await this.transitionQueue.addBulk(bulkJobs);
-      await queryRunner.commitTransaction();
-    } catch (e) {
-      await queryRunner.rollbackTransaction();
-      this.log(
-        `Requeue messages failed with exception. ${e}`,
-        this.requeueMessages.name,
-        session,
-        undefined
-      );
-    } finally {
-      await queryRunner.release();
-    }
-  }
-
   @Cron(CronExpression.EVERY_MINUTE)
   async handleEntryTiming() {
     const session = randomUUID();
+    let triggerStartTasks;
     const queryRunner = this.dataSource.createQueryRunner();
-    await queryRunner.connect();
+    const client = await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
+      // Step 1: Find all journeys that are delayed
       const delayedJourneys = await queryRunner.manager
         .createQueryBuilder(Journey, 'journey')
+        .leftJoinAndSelect('journey.workspace', 'workspace') // Assuming 'owner' is the relation property in the Journey entity
+        .leftJoinAndSelect('workspace.organization', 'organization') // Assuming 'owner' is the relation property in the Journey entity
+        .leftJoinAndSelect('organization.owner', 'account') // Assuming 'owner' is the relation property in the Journey entity
+        .leftJoinAndSelect('account.teams', 'teams') // Assuming 'owner' is the relation property in the Journey entity
+        .leftJoinAndSelect('teams.organization', 'organization_two') // Assuming 'owner' is the relation property in the Journey entity
+        .leftJoinAndSelect('organization_two.workspaces', 'workspaces') // Assuming 'owner' is the relation property in the Journey entity
         .where(
           'journey."journeyEntrySettings"->\'entryTiming\'->>\'type\' = :type AND journey."isActive" = true',
           {
@@ -1090,12 +1299,109 @@ export class CronService {
           }
         )
         .getMany();
+      // Step 2: Filter all journeys that are eligible to be re-enrolled
+      for (
+        let journeysIndex = 0;
+        journeysIndex < delayedJourneys.length;
+        journeysIndex++
+      ) {
+        let enroll = false;
+        if (
+          delayedJourneys[journeysIndex].journeyEntrySettings?.entryTiming.time
+            .frequency === EntryTimingFrequency.Once
+        ) {
+          if (
+            new Date(
+              delayedJourneys[
+                journeysIndex
+              ].journeyEntrySettings?.entryTiming.time.startDate
+            ).getTime() < Date.now() &&
+            +delayedJourneys[journeysIndex].enrollment_count === 0
+          ) {
+            enroll = true;
+          }
+        } else if (
+          delayedJourneys[journeysIndex].journeyEntrySettings?.entryTiming.time
+            .recurrence.endsOn === RecurrenceEndsOptions.After &&
+          +delayedJourneys[journeysIndex].journeyEntrySettings?.entryTiming.time
+            .recurrence.endAdditionalValue <=
+            delayedJourneys[journeysIndex].enrollment_count - 1
+        ) {
+          continue;
+        } else if (
+          delayedJourneys[journeysIndex].journeyEntrySettings?.entryTiming.time
+            .recurrence.endsOn === RecurrenceEndsOptions.SpecificDate &&
+          new Date(
+            delayedJourneys[
+              journeysIndex
+            ].journeyEntrySettings?.entryTiming.time.recurrence.endAdditionalValue
+          ).getTime() <= Date.now()
+        ) {
+          continue;
+        } else {
+          // TODO: Recurring enrollment
+        }
+        if (enroll) {
+          this.log(
+            `Starting enrollment for journey ${delayedJourneys[journeysIndex].id}`,
+            this.handleEntryTiming.name,
+            session
+          );
+          const { collectionName, count } =
+            await this.customersService.getAudienceSize(
+              delayedJourneys[journeysIndex].workspace.organization.owner,
+              delayedJourneys[journeysIndex].inclusionCriteria,
+              session,
+              null
+            );
+          // if (collectionName) collectionNames.push(collectionName);
+          // Step 3: Edit journey details
+          await queryRunner.manager.save(Journey, {
+            ...delayedJourneys[journeysIndex],
+            enrollment_count:
+              delayedJourneys[journeysIndex].enrollment_count + 1,
+            last_enrollment_timestamp: Date.now(),
+          });
+          // Step 4: Reenroll customers that have been unenrolled
+          triggerStartTasks = await this.stepsService.triggerStart(
+            delayedJourneys[journeysIndex].workspace.organization.owner,
+            delayedJourneys[journeysIndex],
+            delayedJourneys[journeysIndex].inclusionCriteria,
+            delayedJourneys[journeysIndex]?.journeySettings?.maxEntries
+              ?.enabled &&
+              count >
+                parseInt(
+                  delayedJourneys[journeysIndex]?.journeySettings?.maxEntries
+                    ?.maxEntries
+                )
+              ? parseInt(
+                  delayedJourneys[journeysIndex]?.journeySettings?.maxEntries
+                    ?.maxEntries
+                )
+              : count,
+            queryRunner,
+            client,
+            session,
+            collectionName
+          );
+          // if (triggerStartTasks.collectionName)
+          //   collectionNames.push(triggerStartTasks.collectionName);
+        }
+      }
       await queryRunner.commitTransaction();
+      // for (const collection of collectionNames) {
+      //   await this.connection.dropCollection(collection);
+      // }
+      if (triggerStartTasks?.job)
+        await this.startQueue.add(
+          triggerStartTasks.job.name,
+          triggerStartTasks.job.data
+        );
     } catch (e) {
       this.error(e, this.handleEntryTiming.name, session);
       await queryRunner.rollbackTransaction();
     } finally {
-      queryRunner.release();
+      await queryRunner.release();
     }
   }
 }
