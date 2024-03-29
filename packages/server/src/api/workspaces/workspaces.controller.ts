@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -16,6 +17,7 @@ import { RavenInterceptor } from 'nest-raven';
 import { Account } from '../accounts/entities/accounts.entity';
 import { Request } from 'express';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
+import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 
 @Controller('workspaces')
 export class WorkspacesController {
@@ -26,6 +28,19 @@ export class WorkspacesController {
   @UseInterceptors(ClassSerializerInterceptor, new RavenInterceptor())
   public getAllWorkspaces(@Req() { user }: Request) {
     return this.workspacesService.getAllWorkspaces(<Account>user);
+  }
+
+  @Patch('/')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(ClassSerializerInterceptor, new RavenInterceptor())
+  public updateCurrentWorkspace(
+    @Req() { user }: Request,
+    @Body() updateWorkspaceDto: UpdateWorkspaceDto
+  ) {
+    return this.workspacesService.updateCurrentWorkspace(
+      <Account>user,
+      updateWorkspaceDto
+    );
   }
 
   @Get('/current')

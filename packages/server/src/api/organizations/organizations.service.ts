@@ -126,16 +126,6 @@ export class OrganizationService {
         }
       );
 
-      await queryRunner.manager.update(
-        Workspaces,
-        {
-          id: account?.teams?.[0]?.organization?.workspaces?.[0]?.id,
-        },
-        {
-          timezoneUTCOffset: body.timezoneUTCOffset,
-        }
-      );
-
       await queryRunner.commitTransaction();
     } catch (err) {
       await queryRunner.rollbackTransaction();

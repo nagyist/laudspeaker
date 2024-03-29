@@ -1,4 +1,3 @@
-import { AxiosError } from "axios";
 import BackButton from "components/BackButton";
 import Button, { ButtonType } from "components/Elements/Buttonv2";
 import Input from "components/Elements/Inputv2";
@@ -48,6 +47,10 @@ const WorkspaceManage = () => {
     } catch (e) {
       toast.error("Unexpected error during workspace creation");
     }
+  };
+
+  const updateCurrentWorkspace = async (id: string) => {
+    await ApiService.post({ url: "/workspaces/set/" + id });
   };
 
   return (
@@ -119,7 +122,9 @@ const WorkspaceManage = () => {
                   <div
                     className="text-[#6366F1] cursor-pointer"
                     onClick={() => {
-                      // navigate("/settings/workspaces/" + workspace.id)
+                      updateCurrentWorkspace(workspace.id);
+                      navigate("/settings");
+                      location.reload();
                     }}
                   >
                     {workspace.name}

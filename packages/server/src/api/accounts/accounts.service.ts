@@ -418,6 +418,9 @@ export class AccountsService extends BaseJwtHelper {
         resendSigningSecret,
         resendSendingName,
         resendSendingEmail,
+        firstName,
+        lastName,
+        email,
       } = updateUserDto;
 
       const newPushPlatforms = {
@@ -460,7 +463,12 @@ export class AccountsService extends BaseJwtHelper {
         resendSendingEmail,
       };
 
-      const updatedUser = await queryRunner.manager.save(oldUser);
+      const updatedUser = await queryRunner.manager.save(Account, {
+        ...oldUser,
+        firstName,
+        lastName,
+        email,
+      });
       await queryRunner.manager.save(Workspaces, newWorkspace);
 
       if (needEmailUpdate)
@@ -634,6 +642,10 @@ export class AccountsService extends BaseJwtHelper {
           timezoneUTCOffset: 'UTC+00:00',
         });
         await queryRunner.manager.save(workspace);
+        await queryRunner.manager.save(Account, {
+          id: account.id,
+          currentWorkspace: { id: workspace.id },
+        });
 
         const team = await queryRunner.manager.create(OrganizationTeam, {
           teamName: 'Default team',

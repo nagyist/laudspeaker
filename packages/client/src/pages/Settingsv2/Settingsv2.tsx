@@ -14,6 +14,8 @@ import Input from "components/Elements/Inputv2";
 import FrequencyCappingTab from "./tabs/FrequecyCappingTab";
 import { FrequencyCappingModal } from "components/FrequencyCappingModal/FrequencyCappingModal";
 import { useLocation } from "react-router-dom";
+import WorkspaceDetailsTab from "./tabs/WorkspaceDetailsTab";
+import { useAppSelector } from "store/hooks";
 
 export enum SettingsTab {
   ACCOUNT,
@@ -49,9 +51,7 @@ const Settingsv2 = () => {
       [SettingsTab.MESSAGE_CHANNEL]: <MessageChannelTab />,
       [SettingsTab.EVENT_PROVIDER]: <EventProviderTab />,
       [SettingsTab.API]: <APITab />,
-      [SettingsTab.WORKSPACE]: (
-        <OrganizationTab setViewTeamMember={setViewTeamMember} />
-      ),
+      [SettingsTab.WORKSPACE]: <WorkspaceDetailsTab />,
       // Removed for 1 release
       // [SettingsTab.PLAN]: <PlanTab />,
       // [SettingsTab.BILLING]: <BillingTab />,

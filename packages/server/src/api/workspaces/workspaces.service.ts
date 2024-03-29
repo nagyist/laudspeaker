@@ -6,6 +6,7 @@ import { Account } from '../accounts/entities/accounts.entity';
 import { AccountsService } from '../accounts/accounts.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { OrganizationService } from '../organizations/organizations.service';
+import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 
 @Injectable()
 export class WorkspacesService {
@@ -23,6 +24,19 @@ export class WorkspacesService {
     });
 
     return account.teams[0].organization.workspaces;
+  }
+
+  public async updateCurrentWorkspace(
+    account: Account,
+    updateWorkspaceDto: UpdateWorkspaceDto
+  ) {
+    if (!account.currentWorkspace)
+      throw new NotFoundException('Workspace not found');
+
+    await this.workspacesRepository.save({
+      id: account.currentWorkspace.id,
+      ...updateWorkspaceDto,
+    });
   }
 
   public getCurrentWorkspace(account: Account) {

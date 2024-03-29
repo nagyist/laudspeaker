@@ -44,8 +44,8 @@ const Header: FC<HeaderProps> = ({ crumbs }) => {
     window.location.reload();
   };
 
-  const updateCurrentWorkspace = async (workspace: Workspace) => {
-    await ApiService.post({ url: "/workspaces/set/" + workspace.id });
+  const updateCurrentWorkspace = async (id: string) => {
+    await ApiService.post({ url: "/workspaces/set/" + id });
     location.reload();
   };
 
@@ -142,7 +142,7 @@ const Header: FC<HeaderProps> = ({ crumbs }) => {
                           className={`p-2.5 cursor-pointer flex items-center justify-between ${
                             active ? " bg-gray-100" : ""
                           }`}
-                          onClick={() => updateCurrentWorkspace(workspace)}
+                          onClick={() => updateCurrentWorkspace(workspace.id)}
                         >
                           <div className="flex items-center gap-2.5">
                             <div
