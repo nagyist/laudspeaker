@@ -5,6 +5,7 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Queue, tryCatch } from 'bullmq';
@@ -36,12 +37,10 @@ export class OrganizationService {
     public organizationInvitesRepository: Repository<OrganizationInvites>,
     @InjectRepository(OrganizationTeam)
     public organizationTeamRepository: Repository<OrganizationTeam>,
-    @Inject(AuthHelper)
-    public readonly helper: AuthHelper,
     @InjectRepository(Account)
     public accountRepository: Repository<Account>,
     @InjectQueue('message') private readonly messageQueue: Queue,
-    @Inject(AuthHelper)
+    @Inject(forwardRef(() => AuthHelper))
     public readonly authHelper: AuthHelper
   ) {}
 
@@ -139,7 +138,7 @@ export class OrganizationService {
     body: CreateOrganizationDTO,
     session: string
   ) {
-    if (account?.teams?.[0]?.organization?.workspaces?.[0]) {
+    if (account.currentWorkspace) {
       throw new BadRequestException('You have already setup organization');
     }
 
@@ -178,7 +177,7 @@ export class OrganizationService {
         currentWorkspace: { id: workspace.id },
       });
 
-      await this.helper.generateDefaultData(account, queryRunner, session);
+      await this.authHelper.generateDefaultData(account, queryRunner, session);
 
       await queryRunner.commitTransaction();
     } catch (err) {
@@ -321,7 +320,7 @@ export class OrganizationService {
     body: DisconnectFirebaseDTO,
     session: string
   ) {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     if (!workspace) {
       throw new BadRequestException(

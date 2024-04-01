@@ -675,7 +675,7 @@ export class AccountsService extends BaseJwtHelper {
       relations: ['teams.organization.workspaces', 'currentWorkspace'],
     });
 
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     let trackerTemplate = await this.templatesService.findOne(
       account,
@@ -770,6 +770,7 @@ export class AccountsService extends BaseJwtHelper {
                     (
                       await this.stepsService.findOne(
                         account,
+                        workspace,
                         node.data.stepId,
                         session
                       )
@@ -778,6 +779,7 @@ export class AccountsService extends BaseJwtHelper {
                       ? (
                           await this.stepsService.insert(
                             account,
+                            workspace,
                             {
                               journeyID: journey.id,
                               type: node.data.type as StepType,

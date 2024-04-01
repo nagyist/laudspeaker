@@ -21,6 +21,7 @@ import generateName from '@good-ghosting/random-name-generator';
 import { Organization } from '../organizations/entities/organization.entity';
 import { OrganizationTeam } from '../organizations/entities/organization-team.entity';
 import { randomUUID } from 'crypto';
+import { Workspaces } from '../workspaces/entities/workspaces.entity';
 
 @Injectable()
 export class AuthHelper extends BaseJwtHelper {
@@ -177,6 +178,7 @@ export class AuthHelper extends BaseJwtHelper {
 
   private async generateExampleSideChecklist(
     account: Account,
+    workspace: Workspaces,
     template: Template,
     queryRunner: QueryRunner,
     session: string
@@ -193,6 +195,7 @@ export class AuthHelper extends BaseJwtHelper {
     const startstep =
       await this.stepsService.transactionalfindAllByTypeInJourney(
         account,
+        workspace,
         StepType.START,
         journey.id,
         queryRunner,
@@ -200,60 +203,70 @@ export class AuthHelper extends BaseJwtHelper {
       );
     const trackerOne = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.TRACKER },
       queryRunner,
       session
     );
     const waitUntilOne = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.WAIT_UNTIL_BRANCH },
       queryRunner,
       session
     );
     const trackerTwo = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.TRACKER },
       queryRunner,
       session
     );
     const waitUntilTwo = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.WAIT_UNTIL_BRANCH },
       queryRunner,
       session
     );
     const trackerThree = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.TRACKER },
       queryRunner,
       session
     );
     const waitUntilThree = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.WAIT_UNTIL_BRANCH },
       queryRunner,
       session
     );
     const trackerFour = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.TRACKER },
       queryRunner,
       session
     );
     const waitUntilFour = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.WAIT_UNTIL_BRANCH },
       queryRunner,
       session
     );
     const trackerFive = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.TRACKER },
       queryRunner,
       session
     );
     const exit = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.EXIT },
       queryRunner,
       session
@@ -989,6 +1002,7 @@ export class AuthHelper extends BaseJwtHelper {
 
   private async generateExampleOnboardingJourney(
     account: Account,
+    workspace: Workspaces,
     queryRunner: QueryRunner,
     session: string
   ) {
@@ -1000,30 +1014,35 @@ export class AuthHelper extends BaseJwtHelper {
     );
     const waitUntil = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.WAIT_UNTIL_BRANCH },
       queryRunner,
       session
     );
     const newsletter = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.MESSAGE },
       queryRunner,
       session
     );
     const followUp = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.MESSAGE },
       queryRunner,
       session
     );
     const newsletterExit = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.EXIT },
       queryRunner,
       session
     );
     const followUpExit = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.EXIT },
       queryRunner,
       session
@@ -1032,6 +1051,7 @@ export class AuthHelper extends BaseJwtHelper {
     const startstep =
       await this.stepsService.transactionalfindAllByTypeInJourney(
         account,
+        workspace,
         StepType.START,
         journey.id,
         queryRunner,
@@ -1217,6 +1237,7 @@ export class AuthHelper extends BaseJwtHelper {
 
   private async generateExampleSingleCampaignJourney(
     account: Account,
+    workspace: Workspaces,
     queryRunner: QueryRunner,
     session: string
   ) {
@@ -1228,12 +1249,14 @@ export class AuthHelper extends BaseJwtHelper {
     );
     const newsletter = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.MESSAGE },
       queryRunner,
       session
     );
     const newsletterExit = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.EXIT },
       queryRunner,
       session
@@ -1241,6 +1264,7 @@ export class AuthHelper extends BaseJwtHelper {
     const startstep =
       await this.stepsService.transactionalfindAllByTypeInJourney(
         account,
+        workspace,
         StepType.START,
         journey.id,
         queryRunner,
@@ -1314,6 +1338,7 @@ export class AuthHelper extends BaseJwtHelper {
 
   private async generateExampleModalJourney(
     account: Account,
+    workspace: Workspaces,
     queryRunner: QueryRunner,
     session: string
   ) {
@@ -1325,12 +1350,14 @@ export class AuthHelper extends BaseJwtHelper {
     );
     const newsletter = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.MESSAGE },
       queryRunner,
       session
     );
     const newsletterExit = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.EXIT },
       queryRunner,
       session
@@ -1338,6 +1365,7 @@ export class AuthHelper extends BaseJwtHelper {
     const startstep =
       await this.stepsService.transactionalfindAllByTypeInJourney(
         account,
+        workspace,
         StepType.START,
         journey.id,
         queryRunner,
@@ -1411,6 +1439,7 @@ export class AuthHelper extends BaseJwtHelper {
 
   private async generateExampleThreeBranchEventJourney(
     account: Account,
+    workspace: Workspaces,
     templates: Template[],
     queryRunner: QueryRunner,
     session: string
@@ -1423,42 +1452,49 @@ export class AuthHelper extends BaseJwtHelper {
     );
     const waitUntil = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.WAIT_UNTIL_BRANCH },
       queryRunner,
       session
     );
     const reactivation = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.MESSAGE },
       queryRunner,
       session
     );
     const reactivationJumpTo = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.LOOP },
       queryRunner,
       session
     );
     const newsletter = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.MESSAGE },
       queryRunner,
       session
     );
     const newsletterJumpTo = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.LOOP },
       queryRunner,
       session
     );
     const invoice = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.MESSAGE },
       queryRunner,
       session
     );
     const invoiceJumpTo = await this.stepsService.transactionalInsert(
       account,
+      workspace,
       { journeyID: journey.id, type: StepType.LOOP },
       queryRunner,
       session
@@ -1466,6 +1502,7 @@ export class AuthHelper extends BaseJwtHelper {
     const startstep =
       await this.stepsService.transactionalfindAllByTypeInJourney(
         account,
+        workspace,
         StepType.START,
         journey.id,
         queryRunner,
@@ -1762,7 +1799,7 @@ export class AuthHelper extends BaseJwtHelper {
       relations: ['teams.organization.workspaces', 'currentWorkspace'],
     });
 
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const templates = await queryRunner.manager.save(
       DEFAULT_TEMPLATES.map((el) => {
@@ -1799,21 +1836,34 @@ export class AuthHelper extends BaseJwtHelper {
       (el) => el.name === DEFAULT_TEMPLATES[2].name
     );
 
-    await this.generateExampleOnboardingJourney(account, queryRunner, session);
-    await this.generateExampleModalJourney(account, queryRunner, session);
+    await this.generateExampleOnboardingJourney(
+      account,
+      workspace,
+      queryRunner,
+      session
+    );
+    await this.generateExampleModalJourney(
+      account,
+      workspace,
+      queryRunner,
+      session
+    );
     await this.generateExampleSingleCampaignJourney(
       account,
+      workspace,
       queryRunner,
       session
     );
     await this.generateExampleSideChecklist(
       account,
+      workspace,
       sidechecklistTemplate,
       queryRunner,
       session
     );
     await this.generateExampleThreeBranchEventJourney(
       account,
+      workspace,
       [reactivationTemplate, newsTemplate, invoiceTemplate],
       queryRunner,
       session

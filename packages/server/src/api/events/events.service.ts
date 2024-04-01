@@ -331,9 +331,9 @@ export class EventsService {
   ) {
     const account = await this.accountsRepository.findOne({
       where: { id: ownerId },
-      relations: ['teams.organization.workspaces'],
+      relations: ['teams.organization.workspaces', 'currentWorkspace'],
     });
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const attributes = await this.EventKeysModel.find({
       $and: [
@@ -353,11 +353,7 @@ export class EventsService {
   }
 
   async getPossibleEventNames(account: Account, search: string) {
-    account = await this.accountsRepository.findOne({
-      where: { id: account.id },
-      relations: ['teams.organization.workspaces'],
-    });
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const eventNames = await this.EventModel.find({
       $and: [
@@ -376,11 +372,7 @@ export class EventsService {
     event: string,
     search: string
   ) {
-    account = await this.accountsRepository.findOne({
-      where: { id: account.id },
-      relations: ['teams.organization.workspaces'],
-    });
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const records = await this.EventModel.find({
       $and: [{ workspaceId: workspace.id }, { event }],
@@ -488,7 +480,7 @@ export class EventsService {
 
     //console.log("in customEvents")
     const searchRegExp = new RegExp(`.*${search}.*`, 'i');
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const totalPages =
       Math.ceil(
@@ -589,108 +581,97 @@ export class EventsService {
   }
 
   async sendTestPush(account: Account, token: string) {
-    const foundAcc = await this.accountsRepository.findOne({
-      where: {
-        id: account.id,
-      },
-      relations: ['teams.organization.workspaces'],
-    });
-
-    const workspace = foundAcc.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const hasConnected = Object.values(workspace.pushPlatforms).some(
       (el) => !!el
     );
 
-    try {
-      if (!hasConnected) {
-        throw new HttpException(
-          "You don't have platform's connected",
-          HttpStatus.NOT_ACCEPTABLE
-        );
-      }
+    if (!hasConnected) {
+      throw new HttpException(
+        "You don't have platform's connected",
+        HttpStatus.NOT_ACCEPTABLE
+      );
+    }
 
-      await Promise.all(
-        Object.keys(workspace.pushPlatforms)
-          .filter((el) => !!workspace.pushPlatforms[el])
-          .map(async (el) => {
-            if (workspace.pushPlatforms[el].credentials) {
-              let firebaseApp: admin.app.App;
+    await Promise.all(
+      Object.keys(workspace.pushPlatforms)
+        .filter((el) => !!workspace.pushPlatforms[el])
+        .map(async (el) => {
+          if (workspace.pushPlatforms[el].credentials) {
+            let firebaseApp: admin.app.App;
 
-              try {
-                firebaseApp = admin.app(foundAcc.id + ';;' + el);
-              } catch (e: any) {
-                if (e.code == 'app/no-app') {
-                  firebaseApp = admin.initializeApp(
-                    {
-                      credential: admin.credential.cert(
-                        workspace.pushPlatforms[el].credentials
-                      ),
-                    },
-                    `${foundAcc.id};;${el}`
-                  );
-                } else {
-                  throw new HttpException(
-                    `Error while using credentials for ${el}.`,
-                    HttpStatus.FAILED_DEPENDENCY
-                  );
-                }
+            try {
+              firebaseApp = admin.app(account.id + ';;' + el);
+            } catch (e: any) {
+              if (e.code == 'app/no-app') {
+                firebaseApp = admin.initializeApp(
+                  {
+                    credential: admin.credential.cert(
+                      workspace.pushPlatforms[el].credentials
+                    ),
+                  },
+                  `${account.id};;${el}`
+                );
+              } else {
+                throw new HttpException(
+                  `Error while using credentials for ${el}.`,
+                  HttpStatus.FAILED_DEPENDENCY
+                );
               }
+            }
 
-              const messaging = admin.messaging(firebaseApp);
+            const messaging = admin.messaging(firebaseApp);
 
-              await messaging.send({
-                token: token,
+            await messaging.send({
+              token: token,
+              notification: {
+                title: `Laudspeaker ${el} test`,
+                body: 'Testing push notifications',
+              },
+              android: {
                 notification: {
-                  title: `Laudspeaker ${el} test`,
-                  body: 'Testing push notifications',
+                  sound: 'default',
                 },
-                android: {
-                  notification: {
+                priority: 'high',
+              },
+              apns: {
+                headers: {
+                  'apns-priority': '5',
+                },
+                payload: {
+                  aps: {
+                    badge: 1,
                     sound: 'default',
                   },
-                  priority: 'high',
                 },
-                apns: {
-                  headers: {
-                    'apns-priority': '5',
-                  },
-                  payload: {
-                    aps: {
-                      badge: 1,
-                      sound: 'default',
-                    },
-                  },
-                },
-              });
-              // await messaging.send({
-              //   token: token,
-              //   data: {
-              //     title: `Laudspeaker ${el} test`,
-              //     body: 'Testing push notifications',
-              //     sound: 'default',
-              //     badge: '1',
-              //   },
-              //   android: {
-              //     priority: 'high'
-              //   },
-              //   apns: {
-              //     headers: {
-              //       'apns-priority': '5',
-              //     },
-              //     payload: {
-              //       aps: {
-              //         contentAvailable: true,
-              //       },
-              //     },
-              //   },
-              // });
-            }
-          })
-      );
-    } catch (e) {
-      throw e;
-    }
+              },
+            });
+            // await messaging.send({
+            //   token: token,
+            //   data: {
+            //     title: `Laudspeaker ${el} test`,
+            //     body: 'Testing push notifications',
+            //     sound: 'default',
+            //     badge: '1',
+            //   },
+            //   android: {
+            //     priority: 'high'
+            //   },
+            //   apns: {
+            //     headers: {
+            //       'apns-priority': '5',
+            //     },
+            //     payload: {
+            //       aps: {
+            //         contentAvailable: true,
+            //       },
+            //     },
+            //   },
+            // });
+          }
+        })
+    );
   }
 
   async sendFCMToken(
@@ -849,10 +830,10 @@ export class EventsService {
       where: {
         id: account.id,
       },
-      relations: ['teams.organization.workspaces'],
+      relations: ['teams.organization.workspaces', 'currentWorkspace'],
     });
 
-    const workspace = foundAcc.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = foundAcc.currentWorkspace;
 
     const hasConnected = Object.values(workspace.pushPlatforms).some(
       (el) => !!el
@@ -867,7 +848,7 @@ export class EventsService {
       }
 
       const customer = await this.customersService.findById(
-        account,
+        workspace,
         body.customerId
       );
 

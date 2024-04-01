@@ -20,6 +20,7 @@ import { Journey } from './entities/journey.entity';
 import { JourneyLocationsService } from './journey-locations.service';
 import { JourneysService } from './journeys.service';
 import { Step } from '../steps/entities/step.entity';
+import { Workspaces } from '../workspaces/entities/workspaces.entity';
 
 const BATCH_SIZE = +process.env.START_BATCH_SIZE;
 
@@ -126,6 +127,7 @@ export class StartProcessor extends WorkerHost {
     job: Job<
       {
         owner: Account;
+        workspace: Workspaces;
         step: Step;
         journey: Journey;
         skip: number;
@@ -165,6 +167,7 @@ export class StartProcessor extends WorkerHost {
         );
         const jobs = await this.journeysService.enrollCustomersInJourney(
           job.data.owner,
+          job.data.workspace,
           job.data.journey,
           customers,
           locations,

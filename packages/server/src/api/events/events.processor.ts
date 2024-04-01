@@ -30,6 +30,7 @@ import * as Sentry from '@sentry/node';
 import { JourneyLocationsService } from '../journeys/journey-locations.service';
 import { Workspace } from 'aws-sdk/clients/workspaces';
 import { InjectRepository } from '@nestjs/typeorm';
+import { Workspaces } from '../workspaces/entities/workspaces.entity';
 
 export enum EventType {
   EVENT = 'event',
@@ -151,7 +152,7 @@ export class EventsProcessor extends WorkerHost {
     job: Job<
       {
         account: Account;
-        workspace: Workspace;
+        workspace: Workspaces;
         journey: Journey;
         customer: CustomerDocument;
         event: any;
@@ -188,7 +189,8 @@ export class EventsProcessor extends WorkerHost {
     await this.journeyLocationsService.lock(
       location,
       job.data.session,
-      job.data.account
+      job.data.account,
+      job.data.workspace
     );
     // All steps in `journey` that might be listening for this event
     const steps = (

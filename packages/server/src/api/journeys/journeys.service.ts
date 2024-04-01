@@ -83,6 +83,7 @@ import { RedisService } from '@liaoliaots/nestjs-redis';
 import { JourneyChange } from './entities/journey-change.entity';
 import isObjectDeepEqual from '@/utils/isObjectDeepEqual';
 import { JourneyLocation } from './entities/journey-location.entity';
+import { Workspaces } from '../workspaces/entities/workspaces.entity';
 
 export enum JourneyStatus {
   ACTIVE = 'Active',
@@ -384,6 +385,7 @@ export class JourneysService {
 
       const step = await this.stepsService.insert(
         account,
+        account.currentWorkspace,
         {
           type: StepType.START,
           journeyID: journey.id,
@@ -464,6 +466,7 @@ export class JourneysService {
 
       const step = await this.stepsService.transactionalInsert(
         account,
+        workspace,
         {
           type: StepType.START,
           journeyID: journey.id,
@@ -553,12 +556,14 @@ export class JourneysService {
 
       const oldSteps = await this.stepsService.transactionalfindByJourneyID(
         user,
+        workspace,
         oldJourney.id,
         queryRunner
       );
 
       const startStep = await this.stepsService.transactionalfindByJourneyID(
         user,
+        workspace,
         newJourney.id,
         queryRunner
       );
@@ -639,14 +644,13 @@ export class JourneysService {
    */
   public async updateEnrollmentForCustomer(
     account: Account,
+    workspace: Workspaces,
     customerId: string,
     customerUpdateType: 'NEW' | 'CHANGE',
     session: string,
     queryRunner: QueryRunner,
     clientSession: ClientSession
   ) {
-    const workspace = account.currentWorkspace;
-
     const journeys = await queryRunner.manager.find(Journey, {
       where: {
         workspace: {
@@ -660,7 +664,7 @@ export class JourneysService {
       },
     });
     const customer = await this.customersService.findById(
-      account,
+      workspace,
       customerId,
       clientSession
     );
@@ -670,6 +674,7 @@ export class JourneysService {
       const doesInclude =
         await this.customersService.isCustomerEnrolledInJourney(
           account,
+          workspace,
           customer,
           journey,
           session,
@@ -681,6 +686,7 @@ export class JourneysService {
         await this.customersService.checkCustomerMatchesQuery(
           journey.inclusionCriteria,
           account,
+          workspace,
           session,
           undefined,
           customerId
@@ -714,6 +720,7 @@ export class JourneysService {
         case 'ADD':
           await this.enrollCustomersInJourney(
             account,
+            workspace,
             journey,
             [customer],
             [],
@@ -744,6 +751,7 @@ export class JourneysService {
    */
   async enrollCustomersInJourney(
     account: Account,
+    workspace: Workspaces,
     journey: Journey,
     customers: CustomerDocument[],
     locations: JourneyLocation[],
@@ -754,6 +762,7 @@ export class JourneysService {
     const jobs: { name: string; data: any }[] = [];
     const step = await this.stepsService.findByJourneyAndType(
       account,
+      workspace,
       journey.id,
       StepType.START,
       session,
@@ -762,7 +771,7 @@ export class JourneysService {
     for (const customer of customers) {
       if (
         await this.rateLimitEntryByUniqueEnrolledCustomers(
-          account,
+          workspace,
           journey,
           queryRunner
         )
@@ -907,6 +916,7 @@ export class JourneysService {
         isStopped: false,
         isPaused: false,
       },
+      relations: ['workspace'],
     });
   }
 
@@ -1500,6 +1510,7 @@ export class JourneysService {
       const graph = new Graph();
       const steps = await this.stepsService.transactionalfindByJourneyID(
         account,
+        workspace,
         journey.id,
         queryRunner
       );
@@ -1530,6 +1541,7 @@ export class JourneysService {
       const { collectionName, count } =
         await this.customersService.getAudienceSize(
           account,
+          workspace,
           journey.inclusionCriteria,
           session,
           null
@@ -1547,6 +1559,7 @@ export class JourneysService {
         });
         triggerStartTasks = await this.stepsService.triggerStart(
           account,
+          workspace,
           journey,
           journey.inclusionCriteria,
           journey?.journeySettings?.maxEntries?.enabled &&
@@ -2578,7 +2591,7 @@ export class JourneysService {
    *    false if rate limit not yet reached (aka new customer can be added)
    */
   async rateLimitEntryByUniqueEnrolledCustomers(
-    owner: Account,
+    workspace: Workspaces,
     journey: Journey,
     queryRunner?: QueryRunner
   ) {
@@ -2587,7 +2600,7 @@ export class JourneysService {
       const maxEnrollment = parseInt(maxEntriesSettings.maxEntries);
       const currentEnrollment =
         await this.journeyLocationsService.getNumberOfEnrolledCustomers(
-          owner,
+          workspace,
           journey,
           queryRunner
         );

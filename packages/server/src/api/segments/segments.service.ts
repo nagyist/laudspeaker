@@ -26,6 +26,7 @@ import e, { query } from 'express';
 import { CountSegmentUsersSizeDTO } from './dto/size-count.dto';
 import { randomUUID } from 'crypto';
 import { Filter, Document } from 'mongodb';
+import { Workspaces } from '../workspaces/entities/workspaces.entity';
 
 @Injectable()
 export class SegmentsService {
@@ -109,7 +110,7 @@ export class SegmentsService {
     queryRunner?: QueryRunner
   ) {
     let segment: Segment;
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
     if (queryRunner) {
       segment = await queryRunner.manager.findOneBy(Segment, {
         id,
@@ -138,7 +139,7 @@ export class SegmentsService {
     search = '',
     session: string
   ) {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
     const totalPages = Math.ceil(
       (await this.segmentRepository.count({
         where: {
@@ -170,7 +171,7 @@ export class SegmentsService {
     search = '',
     session: string
   ) {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const totalPages = Math.ceil(
       (await this.segmentCustomersRepository.count({
@@ -206,16 +207,16 @@ export class SegmentsService {
    */
   public async getSegments(
     account: Account,
+    workspace: Workspaces,
     type: SegmentType | undefined,
     queryRunner: QueryRunner
   ) {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
     return await queryRunner.manager.find(Segment, {
       where: {
         workspace: { id: workspace.id },
         ...(type ? { type: type } : {}),
       },
+      relations: ['workspace'],
     });
   }
 
@@ -256,7 +257,7 @@ export class SegmentsService {
       relations: ['teams.organization.workspaces'],
     });
 
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const segment = await this.segmentRepository.findOneBy({
       id,
@@ -385,13 +386,13 @@ export class SegmentsService {
     batchSize: number,
     segmentId: string,
     account: Account,
+    workspace: Workspaces,
     queryRunner: QueryRunner
   ): Promise<void> {
     const mongoCollection = this.connection.db.collection(collectionName);
 
     let processedCount = 0;
     const totalDocuments = await mongoCollection.countDocuments();
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
     while (processedCount < totalDocuments) {
       // Fetch a batch of documents
@@ -436,7 +437,7 @@ export class SegmentsService {
         HttpStatus.BAD_REQUEST
       );
     }
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     let err;
     const queryRunner = this.dataSource.createQueryRunner();
@@ -462,6 +463,7 @@ export class SegmentsService {
           await this.customersService.getSegmentCustomersFromQuery(
             createSegmentDTO.inclusionCriteria.query,
             account,
+            workspace,
             session,
             true,
             0,
@@ -495,8 +497,7 @@ export class SegmentsService {
               const segmentCustomer = new SegmentCustomers();
               segmentCustomer.customerId = doc._id.toString();
               segmentCustomer.segment = segment.id;
-              segmentCustomer.workspace =
-                account?.teams?.[0]?.organization?.workspaces?.[0];
+              segmentCustomer.workspace = workspace;
               // Set other properties as needed
               return segmentCustomer;
             });
@@ -552,12 +553,15 @@ export class SegmentsService {
       account.id
     );
 
+    const workspace = account.currentWorkspace;
+
     if (createSegmentDTO.inclusionCriteria.query.type === 'any') {
       const collectionPrefix = this.generateRandomString();
       const customersInSegment =
         await this.customersService.getSegmentCustomersFromQuery(
           createSegmentDTO.inclusionCriteria.query,
           account,
+          workspace,
           session,
           true,
           0,
@@ -587,6 +591,7 @@ export class SegmentsService {
         await this.customersService.getSegmentCustomersFromQuery(
           createSegmentDTO.inclusionCriteria.query,
           account,
+          workspace,
           session,
           true,
           0,
@@ -627,8 +632,7 @@ export class SegmentsService {
     updateSegmentDTO: UpdateSegmentDTO,
     session: string
   ) {
-    const segment = await this.findOne(account, id, session);
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     await this.segmentRepository.update(
       { id, workspace: { id: workspace.id } },
@@ -646,6 +650,7 @@ export class SegmentsService {
         ).exec();
         await this.updateAutomaticSegmentCustomerInclusion(
           account,
+          workspace,
           customer,
           session
         );
@@ -677,6 +682,7 @@ export class SegmentsService {
         for (const customer of batch) {
           await this.updateAutomaticSegmentCustomerInclusion(
             account,
+            workspace,
             customer,
             session
           );
@@ -703,7 +709,7 @@ export class SegmentsService {
   }
 
   public async delete(account: Account, id: string, session: string) {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     await this.segmentRepository.delete({
       id,
@@ -743,7 +749,7 @@ export class SegmentsService {
       .sort({ _id: createdAtSortType === 'asc' ? 1 : -1 })
       .exec();
 
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const pk = (
       await this.customersService.CustomerKeysModel.findOne({
@@ -774,14 +780,19 @@ export class SegmentsService {
    */
   public async updateCustomerSegments(
     account: Account,
+    workspace: Workspaces,
     customerId: string,
     session: string,
     queryRunner: QueryRunner
   ) {
     const addedToSegments: Segment[] = [];
     const removedFromSegments: Segment[] = [];
-    const segments = await this.getSegments(account, undefined, queryRunner);
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const segments = await this.getSegments(
+      account,
+      workspace,
+      undefined,
+      queryRunner
+    );
 
     for (const segment of segments) {
       try {
@@ -805,6 +816,7 @@ export class SegmentsService {
         const doInclude = await this.customersService.checkCustomerMatchesQuery(
           segment.inclusionCriteria.query,
           account,
+          workspace,
           session,
           undefined,
           customerId
@@ -825,6 +837,7 @@ export class SegmentsService {
           // If should include but not a member of, then add
           await this.addCustomerToSegment(
             account,
+            workspace,
             segment.id,
             customerId,
             session,
@@ -871,6 +884,7 @@ export class SegmentsService {
    */
   public async addCustomerToSegment(
     account: Account,
+    workspace: Workspaces,
     segmentId: string,
     customerId: string,
     session: string,
@@ -889,8 +903,6 @@ export class SegmentsService {
       segment: segmentId, //{ id: segment.id },
       customerId,
     });
-
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
     if (foundRecord)
       throw new ConflictException('Customer already in this segment');
@@ -926,13 +938,11 @@ export class SegmentsService {
 
   public async assignCustomer(
     account: Account,
+    workspace: Workspaces,
     id: string,
     customerId: string,
     session: string
   ) {
-    const segment = await this.findOne(account, id, session);
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
     const foundRecord = await this.segmentCustomersRepository.findOneBy({
       segment: id, //{ id: segment.id },
       customerId,
@@ -957,6 +967,7 @@ export class SegmentsService {
       ).exec();
       await this.workflowsService.enrollCustomer(
         account,
+        workspace,
         customer,
         runner,
         transactionSession,
@@ -976,13 +987,14 @@ export class SegmentsService {
 
   public async assignCustomers(
     account: Account,
+    workspace: Workspaces,
     id: string,
     customerIds: string[],
     session: string
   ) {
     for (const customerId of customerIds) {
       try {
-        await this.assignCustomer(account, id, customerId, session);
+        await this.assignCustomer(account, workspace, id, customerId, session);
       } catch (e) {
         this.logger.error(e);
       }
@@ -992,6 +1004,7 @@ export class SegmentsService {
   public async updateSegmentCustomersBatched(
     collectionName: string,
     account: Account,
+    workspace: Workspaces,
     segmentId: string,
     session: string,
     queryRunner: QueryRunner,
@@ -999,14 +1012,6 @@ export class SegmentsService {
   ) {
     // Start transaction
     //await queryRunner.startTransaction();
-
-    const segment = await this.findOne(
-      account,
-      segmentId,
-      session,
-      queryRunner
-    );
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
     // Delete existing customers in the segment
     await queryRunner.manager.getRepository(SegmentCustomers).delete({
@@ -1052,9 +1057,8 @@ export class SegmentsService {
     customerIds: string[],
     session: string
   ) {
-    const segment = await this.findOne(account, id, session);
     await this.clearCustomers(account, id, session);
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     return this.segmentCustomersRepository.save(
       customerIds.map((customerId) => ({
@@ -1086,10 +1090,12 @@ export class SegmentsService {
       customerId: In(customerIds),
     });
 
+    const workspace = account.currentWorkspace;
+
     for (const customerId of customerIds) {
       (async () => {
         const customer = await this.customersService.findById(
-          account,
+          workspace,
           customerId
         );
         await this.customersService.recheckDynamicInclusion(
@@ -1107,16 +1113,16 @@ export class SegmentsService {
     customerId: string,
     session: string
   ) {
-    const segment = await this.findOne(account, id, session);
-
     await this.segmentCustomersRepository.delete({
       segment: id, //{ id: segment.id },
       customerId,
     });
 
+    const workspace = account.currentWorkspace;
+
     (async () => {
       const customer = await this.customersService.findById(
-        account,
+        workspace,
         customerId
       );
       await this.customersService.recheckDynamicInclusion(
@@ -1163,7 +1169,7 @@ export class SegmentsService {
     const { name, description, type, inclusionCriteria, resources } =
       await this.findOne(account, id, session);
 
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     return this.segmentRepository.save({
       name,
@@ -1183,6 +1189,8 @@ export class SegmentsService {
   ) {
     const segment = await this.findOne(account, id, session);
 
+    const workspace = account.currentWorkspace;
+
     if (segment.type !== SegmentType.MANUAL)
       throw new BadRequestException("This segment isn't manual");
 
@@ -1192,17 +1200,23 @@ export class SegmentsService {
       session
     );
 
-    await this.assignCustomers(account, segment.id, stats.customers, session);
+    await this.assignCustomers(
+      account,
+      workspace,
+      segment.id,
+      stats.customers,
+      session
+    );
     return { stats };
   }
 
   public async updateAutomaticSegmentCustomerInclusion(
     account: Account,
+    workspace: Workspaces,
     customer: CustomerDocument,
     session: string
   ) {
     await this.deleteCustomerFromAllAutomaticSegments(account, customer._id);
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
     const segments = await this.segmentRepository.findBy({
       workspace: {
@@ -1220,7 +1234,13 @@ export class SegmentsService {
             session
           )
         )
-          await this.assignCustomer(account, segment.id, customer._id, session);
+          await this.assignCustomer(
+            account,
+            workspace,
+            segment.id,
+            customer._id,
+            session
+          );
       } catch (e) {
         this.logger.error(e);
       }
@@ -1233,6 +1253,7 @@ export class SegmentsService {
     try {
       await this.workflowsService.enrollCustomer(
         account,
+        workspace,
         customer,
         runner,
         transactionSession,

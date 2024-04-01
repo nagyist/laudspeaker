@@ -367,9 +367,7 @@ export class CustomersService {
     return ret;
   }
 
-  async addPhCustomers(data: any[], account: Account) {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
+  async addPhCustomers(data: any[], account: Account, workspace: Workspaces) {
     for (let index = 0; index < data.length; index++) {
       const addedBefore = await this.CustomerModel.find({
         workspaceId: workspace.id,
@@ -708,6 +706,8 @@ export class CustomersService {
   ) {
     if (take > 100) take = 100;
 
+    const workspace = account.currentWorkspace;
+
     if (eventsMap[event] && audienceId) {
       const customersCountResponse = await this.clickhouseClient.query({
         query: `SELECT COUNT(DISTINCT(customerId)) FROM message_status WHERE audienceId = {audienceId:UUID} AND event = {event:String}`,
@@ -732,7 +732,7 @@ export class CustomersService {
         totalPages,
         data: await Promise.all(
           customerIds.map(async (id) => ({
-            ...(await this.findById(account, id))?.toObject(),
+            ...(await this.findById(workspace, id))?.toObject(),
             id,
           }))
         ),
@@ -790,7 +790,7 @@ export class CustomersService {
   }
 
   async findById(
-    account: Account,
+    workspace: Workspaces,
     customerId: string,
     clientSession?: ClientSession
   ): Promise<
@@ -807,31 +807,30 @@ export class CustomersService {
       query.session(clientSession);
     }
 
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
     const found = await query.exec();
     if (found && found?.workspaceId == workspace.id) return found;
     return;
   }
 
-  async findBySlackId(
-    account: Account,
-    slackId: string
-  ): Promise<CustomerDocument> {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+  // async findBySlackId(
+  //   account: Account,
+  //   slackId: string
+  // ): Promise<CustomerDocument> {
+  //   const workspace = account.currentWorkspace;
 
-    const customers = await this.CustomerModel.find({
-      workspaceId: workspace.id,
-      slackId: slackId,
-    }).exec();
-    return customers[0];
-    //return found;
-  }
+  //   const customers = await this.CustomerModel.find({
+  //     workspaceId: workspace.id,
+  //     slackId: slackId,
+  //   }).exec();
+  //   return customers[0];
+  //   //return found;
+  // }
 
   async findByExternalIdOrCreate(
     account: Account,
     id: string
   ): Promise<CustomerDocument> {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const customers = await this.CustomerModel.find({
       workspaceId: workspace.id,
@@ -847,7 +846,7 @@ export class CustomersService {
   }
 
   async findByCustomEvent(account: Account, id: string): Promise<Correlation> {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const customers = await this.CustomerModel.find({
       workspaceId: workspace.id,
@@ -875,107 +874,107 @@ export class CustomersService {
    * @returns Correlation
    */
 
-  async findBySpecifiedEvent(
-    account: Account,
-    correlationKey: string,
-    correlationValue: string | string[],
-    event: any,
-    transactionSession: ClientSession,
-    session: string,
-    mapping?: (event: any) => any
-  ): Promise<Correlation> {
-    let customer, createdCustomer: CustomerDocument;
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+  // async findBySpecifiedEvent(
+  //   account: Account,
+  //   correlationKey: string,
+  //   correlationValue: string | string[],
+  //   event: any,
+  //   transactionSession: ClientSession,
+  //   session: string,
+  //   mapping?: (event: any) => any
+  // ): Promise<Correlation> {
+  //   let customer, createdCustomer: CustomerDocument;
+  //   const workspace = account.currentWorkspace;
 
-    const queryParam: any = {
-      workspaceId: workspace.id,
-    };
-    if (Array.isArray(correlationValue)) {
-      queryParam.$or = [];
-      for (let i = 0; i < correlationValue.length; i++) {
-        queryParam.$or.push({
-          [correlationKey]: { $in: [correlationValue[i]] },
-        });
-      }
-    } else {
-      queryParam[correlationKey] = correlationValue;
-    }
-    this.debug(
-      `Looking for customer using query ${JSON.stringify({
-        query: queryParam,
-      })}`,
-      this.findBySpecifiedEvent.name,
-      session,
-      account.id
-    );
-    customer = await this.CustomerModel.findOne(queryParam)
-      .session(transactionSession)
-      .exec();
-    if (!customer) {
-      this.debug(
-        `Customer not found, creating new customer...`,
-        this.findBySpecifiedEvent.name,
-        session,
-        account.id
-      );
-      if (mapping) {
-        const newCust = mapping(event);
-        newCust['workspaceId'] = workspace.id;
-        newCust[correlationKey] = Array.isArray(correlationValue)
-          ? this.filterFalsyAndDuplicates(correlationValue)
-          : correlationValue;
-        createdCustomer = new this.CustomerModel(newCust);
-      } else {
-        createdCustomer = new this.CustomerModel({
-          workspaceId: workspace.id,
-          correlationKey: Array.isArray(correlationValue)
-            ? this.filterFalsyAndDuplicates(correlationValue)
-            : correlationValue,
-        });
-      }
-      this.debug(
-        `Created new customer ${JSON.stringify(createdCustomer)}`,
-        this.findBySpecifiedEvent.name,
-        session,
-        account.id
-      );
-      return {
-        cust: await createdCustomer.save({ session: transactionSession }),
-        found: false,
-      };
-      //to do cant just return [0] in the future
-    } else {
-      this.debug(
-        `Customer found: ${JSON.stringify(customer)}`,
-        this.findBySpecifiedEvent.name,
-        session,
-        account.id
-      );
-      const updateObj: any = mapping ? mapping(event) : undefined;
-      if (Array.isArray(correlationValue)) {
-        updateObj.$addToSet = {
-          [correlationKey]: {
-            $each: this.filterFalsyAndDuplicates(correlationValue),
-          },
-        };
-      } else {
-        updateObj[correlationKey] = correlationValue;
-      }
-      customer = await this.CustomerModel.findOneAndUpdate(
-        queryParam,
-        updateObj
-      )
-        .session(transactionSession)
-        .exec();
-      this.debug(
-        `Customer updated: ${JSON.stringify(customer)}`,
-        this.findBySpecifiedEvent.name,
-        session,
-        account.id
-      );
-      return { cust: customer, found: true };
-    }
-  }
+  //   const queryParam: any = {
+  //     workspaceId: workspace.id,
+  //   };
+  //   if (Array.isArray(correlationValue)) {
+  //     queryParam.$or = [];
+  //     for (let i = 0; i < correlationValue.length; i++) {
+  //       queryParam.$or.push({
+  //         [correlationKey]: { $in: [correlationValue[i]] },
+  //       });
+  //     }
+  //   } else {
+  //     queryParam[correlationKey] = correlationValue;
+  //   }
+  //   this.debug(
+  //     `Looking for customer using query ${JSON.stringify({
+  //       query: queryParam,
+  //     })}`,
+  //     this.findBySpecifiedEvent.name,
+  //     session,
+  //     account.id
+  //   );
+  //   customer = await this.CustomerModel.findOne(queryParam)
+  //     .session(transactionSession)
+  //     .exec();
+  //   if (!customer) {
+  //     this.debug(
+  //       `Customer not found, creating new customer...`,
+  //       this.findBySpecifiedEvent.name,
+  //       session,
+  //       account.id
+  //     );
+  //     if (mapping) {
+  //       const newCust = mapping(event);
+  //       newCust['workspaceId'] = workspace.id;
+  //       newCust[correlationKey] = Array.isArray(correlationValue)
+  //         ? this.filterFalsyAndDuplicates(correlationValue)
+  //         : correlationValue;
+  //       createdCustomer = new this.CustomerModel(newCust);
+  //     } else {
+  //       createdCustomer = new this.CustomerModel({
+  //         workspaceId: workspace.id,
+  //         correlationKey: Array.isArray(correlationValue)
+  //           ? this.filterFalsyAndDuplicates(correlationValue)
+  //           : correlationValue,
+  //       });
+  //     }
+  //     this.debug(
+  //       `Created new customer ${JSON.stringify(createdCustomer)}`,
+  //       this.findBySpecifiedEvent.name,
+  //       session,
+  //       account.id
+  //     );
+  //     return {
+  //       cust: await createdCustomer.save({ session: transactionSession }),
+  //       found: false,
+  //     };
+  //     //to do cant just return [0] in the future
+  //   } else {
+  //     this.debug(
+  //       `Customer found: ${JSON.stringify(customer)}`,
+  //       this.findBySpecifiedEvent.name,
+  //       session,
+  //       account.id
+  //     );
+  //     const updateObj: any = mapping ? mapping(event) : undefined;
+  //     if (Array.isArray(correlationValue)) {
+  //       updateObj.$addToSet = {
+  //         [correlationKey]: {
+  //           $each: this.filterFalsyAndDuplicates(correlationValue),
+  //         },
+  //       };
+  //     } else {
+  //       updateObj[correlationKey] = correlationValue;
+  //     }
+  //     customer = await this.CustomerModel.findOneAndUpdate(
+  //       queryParam,
+  //       updateObj
+  //     )
+  //       .session(transactionSession)
+  //       .exec();
+  //     this.debug(
+  //       `Customer updated: ${JSON.stringify(customer)}`,
+  //       this.findBySpecifiedEvent.name,
+  //       session,
+  //       account.id
+  //     );
+  //     return { cust: customer, found: true };
+  //   }
+  // }
 
   /**
    * Finds all customers that match conditions.
@@ -1056,12 +1055,12 @@ export class CustomersService {
    */
   async getAudienceSize(
     account: Account,
+    workspace: Workspaces,
     criteria: any,
     session: string,
     transactionSession?: ClientSession
   ): Promise<{ collectionName: string; count: number }> {
     let collectionName: string;
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
     let collectionPrefix: string;
     let count = 0;
     let query: any;
@@ -1082,6 +1081,7 @@ export class CustomersService {
       const customersInSegment = await this.getCustomersFromQuery(
         criteria.query,
         account,
+        workspace,
         session,
         true,
         0,
@@ -1124,13 +1124,13 @@ export class CustomersService {
    */
   async findByCorrelationKVPair(
     account: Account,
+    workspace: Workspaces,
     correlationKey: string,
     correlationValue: string | string[],
     session: string,
     transactionSession?: ClientSession
   ): Promise<CustomerDocument> {
     let customer: CustomerDocument; // Found customer
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
     const queryParam: any = {
       workspaceId: workspace.id,
@@ -1842,11 +1842,13 @@ export class CustomersService {
         ?.data;
       const customerIds = data?.map((item) => item.customerId) || [];
 
+      const workspace = account.currentWorkspace;
+
       return {
         totalPages,
         data: await Promise.all(
           customerIds.map(async (id) => ({
-            ...(await this.findById(account, id))?.toObject(),
+            ...(await this.findById(workspace, id))?.toObject(),
             id,
           }))
         ),
@@ -1854,8 +1856,17 @@ export class CustomersService {
     }
   }
 
-  public async countCustomersInStep(account: Account, stepId: string) {
-    const step = await this.stepsService.findOne(account, stepId, '');
+  public async countCustomersInStep(
+    account: Account,
+    workspace: Workspaces,
+    stepId: string
+  ) {
+    const step = await this.stepsService.findOne(
+      account,
+      workspace,
+      stepId,
+      ''
+    );
     if (!step) throw new NotFoundException('Step not found');
 
     let result = step.customers.length;
@@ -1868,7 +1879,7 @@ export class CustomersService {
         continue;
       }
 
-      const customer = await this.findById(account, customerId);
+      const customer = await this.findById(workspace, customerId);
       if (!customer) {
         result--;
         continue;
@@ -1881,9 +1892,13 @@ export class CustomersService {
   public async bulkCountCustomersInSteps(account: Account, stepIds: string[]) {
     const result: number[] = [];
 
+    const workspace = account.currentWorkspace;
+
     for (const stepId of stepIds) {
       try {
-        result.push(await this.countCustomersInStep(account, stepId));
+        result.push(
+          await this.countCustomersInStep(account, workspace, stepId)
+        );
       } catch (e) {
         result.push(0);
       }
@@ -1900,7 +1915,14 @@ export class CustomersService {
   ) {
     if (take > 100) take = 100;
 
-    const step = await this.stepsService.findOne(account, stepId, '');
+    const workspace = account.currentWorkspace;
+
+    const step = await this.stepsService.findOne(
+      account,
+      workspace,
+      stepId,
+      ''
+    );
     if (!step) throw new NotFoundException('Step not found');
 
     const totalPages = Math.ceil(step.customers.length / take || 1);
@@ -1911,7 +1933,7 @@ export class CustomersService {
 
     const customers = await Promise.all(
       customerIds.map(async (customerId) => {
-        const customer = await this.findById(account, customerId);
+        const customer = await this.findById(workspace, customerId);
         if (!customer) return undefined;
 
         return { id: customer._id, email: customer.email };
@@ -1926,6 +1948,7 @@ export class CustomersService {
 
   public async isCustomerEnrolledInJourney(
     account: Account,
+    workspace: Workspaces,
     customer: CustomerDocument,
     journey: Journey,
     session: string,
@@ -1937,6 +1960,7 @@ export class CustomersService {
       customer,
       session,
       account,
+      workspace,
       queryRunner
     );
     return !!location;
@@ -2013,6 +2037,7 @@ export class CustomersService {
   async CountCustomersFromAndQuery(
     query: any,
     account: Account,
+    workspace: Workspaces,
     session: string,
     topLevel: boolean,
     count: number,
@@ -2047,6 +2072,7 @@ export class CustomersService {
           return await this.getSegmentCustomersFromSubQuery(
             statement,
             account,
+            workspace,
             session,
             count++,
             collectionName + count
@@ -2148,6 +2174,7 @@ export class CustomersService {
   async getCustomersFromQuery(
     query: any,
     account: Account,
+    workspace: Workspaces,
     session: string,
     topLevel: boolean,
     count: number,
@@ -2189,6 +2216,7 @@ export class CustomersService {
           return await this.getSegmentCustomersFromSubQuery(
             statement,
             account,
+            workspace,
             session,
             count++,
             collectionName + count
@@ -2314,6 +2342,7 @@ export class CustomersService {
           return await this.getSegmentCustomersFromSubQuery(
             statement,
             account,
+            workspace,
             session,
             count++,
             collectionName + count
@@ -2467,6 +2496,7 @@ export class CustomersService {
   async getSegmentCustomersFromQuery(
     query: any,
     account: Account,
+    workspace: Workspaces,
     session: string,
     topLevel: boolean,
     count: number,
@@ -2508,6 +2538,7 @@ export class CustomersService {
           return await this.getSegmentCustomersFromSubQuery(
             statement,
             account,
+            workspace,
             session,
             count++,
             collectionName + count
@@ -2603,6 +2634,7 @@ export class CustomersService {
           return await this.getSegmentCustomersFromSubQuery(
             statement,
             account,
+            workspace,
             session,
             count++,
             collectionName + count
@@ -2699,6 +2731,7 @@ export class CustomersService {
   async getSegmentCustomersFromSubQuery(
     statement: any,
     account: Account,
+    workspace: Workspaces,
     session: string,
     count: number,
     intermediateCollection: string
@@ -2714,6 +2747,7 @@ export class CustomersService {
       return this.getSegmentCustomersFromQuery(
         statement,
         account,
+        workspace,
         session,
         false,
         count,
@@ -2729,6 +2763,7 @@ export class CustomersService {
       return await this.getCustomersFromStatement(
         statement,
         account,
+        workspace,
         session,
         count,
         intermediateCollection
@@ -2747,6 +2782,7 @@ export class CustomersService {
   async getCustomersFromStatement(
     statement: any,
     account: Account,
+    workspace: Workspaces,
     session: string,
     count: number,
     intermediateCollection: string
@@ -2803,6 +2839,7 @@ export class CustomersService {
         return this.customersFromAttributeStatement(
           statement,
           account,
+          workspace,
           session,
           count,
           intermediateCollection
@@ -2812,6 +2849,7 @@ export class CustomersService {
         return await this.customersFromEventStatement(
           statement,
           account,
+          workspace,
           session,
           count,
           intermediateCollection
@@ -2820,6 +2858,7 @@ export class CustomersService {
         return this.customersFromMessageStatement(
           statement,
           account,
+          workspace,
           'Email',
           session,
           count,
@@ -2829,6 +2868,7 @@ export class CustomersService {
         return this.customersFromMessageStatement(
           statement,
           account,
+          workspace,
           'Push',
           session,
           count,
@@ -2838,6 +2878,7 @@ export class CustomersService {
         return this.customersFromMessageStatement(
           statement,
           account,
+          workspace,
           'SMS',
           session,
           count,
@@ -2847,6 +2888,7 @@ export class CustomersService {
         return this.customersFromMessageStatement(
           statement,
           account,
+          workspace,
           'In-app message',
           session,
           count,
@@ -3058,6 +3100,7 @@ export class CustomersService {
   async customersFromMessageStatement(
     statement: any,
     account: Account,
+    workspace: Workspaces,
     typeOfMessage: string,
     session: string,
     count: number,
@@ -3095,7 +3138,6 @@ export class CustomersService {
       tag,
     } = statement;
 
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
     const workspaceIdCondition = `workspaceId = '${workspace.id}'`;
     //to do change clickhouse?
     //const workspaceIdCondition = `userId = '${workspace.id}'`;
@@ -3123,6 +3165,7 @@ export class CustomersService {
     for (const journeyId of journeyIds) {
       const steps = await this.stepsService.transactionalfindAllByTypeInJourney(
         account,
+        workspace,
         StepType.MESSAGE,
         journeyId,
         queryRunner,
@@ -3429,12 +3472,11 @@ export class CustomersService {
   async customersFromAttributeStatement(
     statement: any,
     account: Account,
+    workspace: Workspaces,
     session: string,
     count: number,
     intermediateCollection: string
   ) {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
     //console.log('generating attribute mongo query');
     this.debug(
       'generating attribute mongo query\n',
@@ -3753,14 +3795,13 @@ export class CustomersService {
   async customersFromEventStatement(
     statement: any,
     account: Account,
+    workspace: Workspaces,
     session: string,
     count: number,
     intermediateCollection: string
   ) {
     const { eventName, comparisonType, value, time, additionalProperties } =
       statement;
-
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
     // ****
     const mongoQuery: any = {
@@ -4483,6 +4524,7 @@ export class CustomersService {
   async checkCustomerMatchesQuery(
     query: any,
     account: Account,
+    workspace: Workspaces,
     session: string,
     customer?: CustomerDocument,
     customerId?: string,
@@ -4502,7 +4544,7 @@ export class CustomersService {
     }
     if (customerId && !customer) {
       // If customerId is provided but customer is not
-      customer = await this.findById(account, customerId);
+      customer = await this.findById(workspace, customerId);
       // customer = await this.CustomerModel.findOne({
       //   _id: new Types.ObjectId(customerId),
       //   ownerId: account.id,
@@ -4540,6 +4582,7 @@ export class CustomersService {
             customer,
             statement,
             account,
+            workspace,
             session
           );
         })
@@ -4564,6 +4607,7 @@ export class CustomersService {
             customer,
             statement,
             account,
+            workspace,
             session
           );
         })
@@ -4589,6 +4633,7 @@ export class CustomersService {
     customer: CustomerDocument,
     statement: any,
     account: Account,
+    workspace: Workspaces,
     session: string,
     options?: QueryOptions
   ): Promise<boolean> {
@@ -4597,6 +4642,7 @@ export class CustomersService {
       return this.checkCustomerMatchesQuery(
         statement,
         account,
+        workspace,
         session,
         customer
       );
@@ -4605,6 +4651,7 @@ export class CustomersService {
         customer,
         statement,
         account,
+        workspace,
         session
       );
     }
@@ -4623,6 +4670,7 @@ export class CustomersService {
     customer: CustomerDocument,
     statement: any,
     account: Account,
+    workspace: Workspaces,
     session: string
   ): Promise<boolean> {
     const {
@@ -4647,6 +4695,7 @@ export class CustomersService {
           customer,
           statement,
           account,
+          workspace,
           session
         );
       case 'Email':
@@ -4654,6 +4703,7 @@ export class CustomersService {
           customer,
           statement,
           account,
+          workspace,
           'Email',
           session
         );
@@ -4662,6 +4712,7 @@ export class CustomersService {
           customer,
           statement,
           account,
+          workspace,
           'Push',
           session
         );
@@ -4670,6 +4721,7 @@ export class CustomersService {
           customer,
           statement,
           account,
+          workspace,
           'SMS',
           session
         );
@@ -4678,6 +4730,7 @@ export class CustomersService {
           customer,
           statement,
           account,
+          workspace,
           'In-app message',
           session
         );
@@ -4738,6 +4791,7 @@ export class CustomersService {
     customer: CustomerDocument,
     statement: any,
     account: Account,
+    workspace: Workspaces,
     typeOfMessage: string,
     session: string
   ): Promise<boolean> {
@@ -4751,7 +4805,6 @@ export class CustomersService {
       happenCondition,
       time,
     } = statement;
-    const workspace = account.teams?.[0]?.organization?.workspaces?.[0];
     const workspaceIdCondition = `workspaceId = '${workspace.id}'`;
     //to do change clickhouse?
     //const workspaceIdCondition = `userId = '${workspace.id}'`;
@@ -4884,12 +4937,11 @@ export class CustomersService {
     customer: CustomerDocument,
     statement: any,
     account: Account,
+    workspace: Workspaces,
     session: string
   ): Promise<boolean> {
     const { eventName, comparisonType, value, time, additionalProperties } =
       statement;
-
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
     // ****
     const mongoQuery: any = {
@@ -5206,7 +5258,7 @@ export class CustomersService {
     data: { id: string; email: string; phone: string }[];
     totalPages: number;
   }> {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     const query: any = { workspaceId: workspace.id };
 

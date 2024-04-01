@@ -285,6 +285,9 @@ export class CronService {
             session,
             queryRunner
           );
+
+        const workspace = journeys[journeyIndex].workspace;
+
         for (
           let locationsIndex = 0;
           locationsIndex < locations.length;
@@ -294,6 +297,7 @@ export class CronService {
             String(locations[locationsIndex].step),
             session,
             null,
+            workspace,
             queryRunner
           );
           let branch;
@@ -444,6 +448,7 @@ export class CronService {
               locations[locationsIndex],
               session,
               undefined,
+              workspace,
               queryRunner
             );
             timeBasedJobs.push({
@@ -559,6 +564,7 @@ export class CronService {
           customer,
           session,
           requeue?.workspace?.organization?.owner,
+          requeue.workspace,
           queryRunner
         );
         await bulkJobs.push({
@@ -787,6 +793,7 @@ export class CronService {
       try {
         const segments = await this.segmentsService.getSegments(
           accounts[j],
+          accounts[j].currentWorkspace,
           undefined,
           queryRunner
         );
@@ -829,6 +836,7 @@ export class CronService {
               await this.customersService.getSegmentCustomersFromQuery(
                 segment.inclusionCriteria.query,
                 accounts[j],
+                accounts[j].currentWorkspace,
                 session,
                 true,
                 0,
@@ -847,6 +855,7 @@ export class CronService {
             await this.segmentsService.updateSegmentCustomersBatched(
               customersInSegment,
               accounts[j],
+              accounts[j].currentWorkspace,
               segment.id,
               session,
               queryRunner,
@@ -1350,6 +1359,7 @@ export class CronService {
           const { collectionName, count } =
             await this.customersService.getAudienceSize(
               delayedJourneys[journeysIndex].workspace.organization.owner,
+              delayedJourneys[journeysIndex].workspace,
               delayedJourneys[journeysIndex].inclusionCriteria,
               session,
               null
@@ -1365,6 +1375,7 @@ export class CronService {
           // Step 4: Reenroll customers that have been unenrolled
           triggerStartTasks = await this.stepsService.triggerStart(
             delayedJourneys[journeysIndex].workspace.organization.owner,
+            delayedJourneys[journeysIndex].workspace,
             delayedJourneys[journeysIndex],
             delayedJourneys[journeysIndex].inclusionCriteria,
             delayedJourneys[journeysIndex]?.journeySettings?.maxEntries

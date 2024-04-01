@@ -168,6 +168,7 @@ export class TransitionProcessor extends WorkerHost {
       {
         step: Step;
         owner: Account;
+        workspace: Workspaces;
         journey: Journey;
         customer: CustomerDocument;
         location: JourneyLocation;
@@ -230,6 +231,7 @@ export class TransitionProcessor extends WorkerHost {
         case StepType.MULTISPLIT:
           await this.handleMultisplit(
             job.data.owner,
+            job.data.workspace,
             job.data.journey,
             job.data.step,
             job.data.session,
@@ -350,7 +352,10 @@ export class TransitionProcessor extends WorkerHost {
       lock: { mode: 'pessimistic_write' },
     });
 
-    const customer = await this.customersService.findById(owner, customerID);
+    const customer = await this.customersService.findById(
+      workspace,
+      customerID
+    );
 
     const location = await this.journeyLocationsService.findForWrite(
       journey,
@@ -1576,6 +1581,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleMultisplit(
     owner: Account,
+    workspace: Workspaces,
     journey: Journey,
     step: Step,
     session: string,
@@ -1597,6 +1603,7 @@ export class TransitionProcessor extends WorkerHost {
         await this.customersService.checkCustomerMatchesQuery(
           step.metadata.branches[branchIndex].conditions.query,
           owner,
+          workspace,
           session,
           customer
         )

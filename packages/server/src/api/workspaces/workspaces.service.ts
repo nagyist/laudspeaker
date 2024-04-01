@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Workspaces } from './entities/workspaces.entity';
 import { Repository } from 'typeorm';
@@ -26,6 +31,13 @@ export class WorkspacesService {
     return account.teams[0].organization.workspaces;
   }
 
+  public async findOneByAPIKey(apiKey: string) {
+    const workspace = await this.workspacesRepository.findOneBy({ apiKey });
+    if (!workspace) throw new NotFoundException('Workspace not found');
+
+    return workspace;
+  }
+
   public async updateCurrentWorkspace(
     account: Account,
     updateWorkspaceDto: UpdateWorkspaceDto
@@ -40,10 +52,7 @@ export class WorkspacesService {
   }
 
   public getCurrentWorkspace(account: Account) {
-    return (
-      account.currentWorkspace ||
-      account.teams?.[0]?.organization?.workspaces?.[0]
-    );
+    return account.currentWorkspace;
   }
 
   public async setCurrentWorkspace(account: Account, id: string) {

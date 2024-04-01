@@ -18,6 +18,7 @@ import { CustomersService } from '../customers/customers.service';
 import { Journey } from '../journeys/entities/journey.entity';
 import { InjectConnection } from '@nestjs/mongoose';
 import mongoose, { ClientSession } from 'mongoose';
+import { Workspaces } from '../workspaces/entities/workspaces.entity';
 
 @Injectable()
 export class StepsService {
@@ -149,6 +150,7 @@ export class StepsService {
    */
   async triggerStart(
     account: Account,
+    workspace: Workspaces,
     journey: Journey,
     query: any,
     audienceSize: number,
@@ -157,8 +159,6 @@ export class StepsService {
     session?: string,
     collectionName?: string
   ): Promise<{ collectionName: string; job: { name: string; data: any } }> {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
     const startStep = await queryRunner.manager.find(Step, {
       where: {
         workspace: { id: workspace.id },
@@ -198,6 +198,7 @@ export class StepsService {
         startStep[0],
         session,
         account,
+        workspace,
         queryRunner,
         client
       );
@@ -228,7 +229,7 @@ export class StepsService {
    * @returns
    */
   async findAll(account: Account, session: string): Promise<Step[]> {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = account.currentWorkspace;
 
     try {
       return await this.stepsRepository.findBy({
@@ -253,7 +254,7 @@ export class StepsService {
     session: string
   ): Promise<Step[]> {
     try {
-      const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+      const workspace = account.currentWorkspace;
 
       return await this.stepsRepository.findBy({
         workspace: account && workspace ? { id: workspace.id } : undefined,
@@ -274,14 +275,13 @@ export class StepsService {
    */
   async transactionalfindAllByTypeInJourney(
     account: Account,
+    workspace: Workspaces,
     type: StepType,
     journeyID: string,
     queryRunner: QueryRunner,
     session: string
   ): Promise<Step[]> {
     try {
-      const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
       return await queryRunner.manager.findBy(Step, {
         workspace: account && workspace ? { id: workspace.id } : undefined,
 
@@ -308,7 +308,7 @@ export class StepsService {
     queryRunner: QueryRunner
   ): Promise<Step[]> {
     try {
-      const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+      const workspace = account.currentWorkspace;
 
       return await queryRunner.manager.findBy(Step, {
         workspace: account && workspace ? { id: workspace.id } : undefined,
@@ -334,7 +334,7 @@ export class StepsService {
     queryRunner: QueryRunner
   ): Promise<Step[]> {
     try {
-      const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+      const workspace = account.currentWorkspace;
 
       return await queryRunner.manager.find(Step, {
         where: {
@@ -392,12 +392,11 @@ export class StepsService {
    */
   async findOne(
     account: Account,
+    workspace: Workspaces,
     id: string,
     session: string
   ): Promise<Step | null> {
     try {
-      const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
       return await this.stepsRepository.findOneBy({
         workspace: { id: workspace.id },
         id: id,
@@ -417,13 +416,12 @@ export class StepsService {
    */
   async findByJourneyAndType(
     account: Account,
+    workspace: Workspaces,
     journey: string,
     type: StepType,
     session: string,
     queryRunner?: QueryRunner
   ): Promise<Step | null> {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
     if (queryRunner) {
       return await queryRunner.manager.findOne(Step, {
         where: {
@@ -454,10 +452,10 @@ export class StepsService {
   async findByID(
     id: string,
     session: string,
-    account?: Account,
+    account: Account,
+    workspace: Workspaces,
     queryRunner?: QueryRunner
   ): Promise<Step | null> {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
     if (queryRunner) {
       return await queryRunner.manager.findOne(Step, {
         where: {
@@ -512,12 +510,12 @@ export class StepsService {
    */
   async insert(
     account: Account,
+    workspace: Workspaces,
     createStepDto: CreateStepDto,
     session: string
   ): Promise<Step> {
     try {
       const { journeyID, type } = createStepDto;
-      const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
       return await this.stepsRepository.save({
         customers: [],
@@ -541,6 +539,7 @@ export class StepsService {
    */
   async transactionalInsert(
     account: Account,
+    workspace: Workspaces,
     createStepDto: CreateStepDto,
     queryRunner: QueryRunner,
     session: string
@@ -550,8 +549,6 @@ export class StepsService {
         where: { id: account.id },
         relations: ['teams.organization.workspaces'],
       });
-
-      const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
       const { journeyID, type } = createStepDto;
       return await queryRunner.manager.save(Step, {
@@ -575,11 +572,10 @@ export class StepsService {
    */
   async transactionalfindByJourneyID(
     account: Account,
+    workspace: Workspaces,
     id: string,
     queryRunner: QueryRunner
   ) {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
     return await queryRunner.manager.find(Step, {
       where: {
         workspace: { id: workspace.id },
