@@ -242,10 +242,8 @@ export class JourneysService {
     @InjectModel(Customer.name) public CustomerModel: Model<CustomerDocument>,
     @Inject(forwardRef(() => CustomersService))
     private customersService: CustomersService,
-    @InjectConnection() private readonly connection: mongoose.Connection,
     @Inject(JourneyLocationsService)
     private readonly journeyLocationsService: JourneyLocationsService,
-    @InjectQueue('transition') private readonly transitionQueue: Queue,
     @Inject(RedisService) private redisService: RedisService,
     @InjectQueue('start') private readonly startQueue: Queue
   ) {}
@@ -761,7 +759,6 @@ export class JourneysService {
   ): Promise<{ name: string; data: any }[]> {
     const jobs: { name: string; data: any }[] = [];
     const step = await this.stepsService.findByJourneyAndType(
-      account,
       workspace,
       journey.id,
       StepType.START,
@@ -788,6 +785,7 @@ export class JourneysService {
         name: 'start',
         data: {
           owner: account,
+          workspace,
           journey: journey,
           step: step,
           location: locations.find((location: JourneyLocation) => {
@@ -1309,11 +1307,6 @@ export class JourneysService {
     session: string,
     queryRunner?: QueryRunner
   ) {
-    account = await this.customersService.accountsRepository.findOne({
-      where: { id: account.id },
-      relations: ['teams.organization.workspaces'],
-    });
-
     const workspace = account.currentWorkspace;
 
     if (queryRunner)

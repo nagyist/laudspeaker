@@ -481,6 +481,7 @@ export class EventsProcessor extends WorkerHost {
           branch: branch,
           customer: job.data.customer,
           owner: job.data.account, //stepToQueue.workspace.organization.owner.id,
+          workspace: job.data.workspace,
           location,
           session: job.data.session,
           journey: job.data.journey,

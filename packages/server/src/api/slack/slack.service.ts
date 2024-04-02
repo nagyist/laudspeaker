@@ -270,7 +270,7 @@ export class SlackService {
     const found: Account = await this.accountsRepository.findOneBy({
       id: (<Account>user).id,
     });
-    const workspace = user.teams?.[0]?.organization?.workspaces?.[0];
+    const workspace = user.currentWorkspace;
     //to do
     // null, undefined
     if (workspace.slackTeamId == null) {

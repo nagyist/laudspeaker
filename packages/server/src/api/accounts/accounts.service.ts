@@ -38,6 +38,7 @@ import { update } from 'lodash';
 import { Workspaces } from '../workspaces/entities/workspaces.entity';
 import { Organization } from '../organizations/entities/organization.entity';
 import { OrganizationTeam } from '../organizations/entities/organization-team.entity';
+import { OrganizationService } from '../organizations/organizations.service';
 
 @Injectable()
 export class AccountsService extends BaseJwtHelper {
@@ -63,7 +64,9 @@ export class AccountsService extends BaseJwtHelper {
     private stepsService: StepsService,
     @InjectConnection() private readonly connection: mongoose.Connection,
     @Inject(forwardRef(() => WebhooksService))
-    private webhookService: WebhooksService
+    private webhookService: WebhooksService,
+    @Inject(forwardRef(() => OrganizationService))
+    private organizationService: OrganizationService
   ) {
     super();
     if (
@@ -386,7 +389,7 @@ export class AccountsService extends BaseJwtHelper {
     await queryRunner.startTransaction();
     let err;
     try {
-      const workspace = oldUser.teams?.[0]?.organization?.workspaces?.[0];
+      const workspace = oldUser.currentWorkspace;
 
       oldUser.password = password;
       oldUser.verified = verified;
@@ -538,15 +541,6 @@ export class AccountsService extends BaseJwtHelper {
     let transactionSession: ClientSession;
     try {
       const account = await this.findOne(user, session);
-      /*
-      this.debug(
-        `Found ${JSON.stringify({ id: account.id })}`,
-        this.remove.name,
-        session,
-        (<Account>user).id
-      );
-    */
-      const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
       if (!bcrypt.compareSync(removeAccountDto.password, account.password))
         throw new BadRequestException('Password is incorrect');
@@ -554,35 +548,47 @@ export class AccountsService extends BaseJwtHelper {
       transactionSession = await this.connection.startSession();
       transactionSession.startTransaction();
 
-      await this.customersService.CustomerModel.deleteMany(
-        {
-          workspaceId: workspace.id,
-        },
-        { session: transactionSession }
-      )
-        .session(transactionSession)
-        .exec();
-      this.debug(
-        `Deleted customers for ${JSON.stringify({ id: account.id })}`,
-        this.remove.name,
-        session,
-        (<Account>user).id
-      );
+      const organizationToClean =
+        await this.organizationService.organizationRepository.findOne({
+          where: {
+            owner: { id: account.id },
+          },
+          relations: ['workspaces'],
+        });
 
-      await this.customersService.CustomerKeysModel.deleteMany(
-        {
-          workspaceId: workspace.id,
-        },
-        { session: transactionSession }
-      )
-        .session(transactionSession)
-        .exec();
-      this.debug(
-        `Deleted customer keys for ${JSON.stringify({ id: account.id })}`,
-        this.remove.name,
-        session,
-        (<Account>user).id
-      );
+      if (organizationToClean) {
+        for (const workspace of organizationToClean.workspaces) {
+          await this.customersService.CustomerModel.deleteMany(
+            {
+              workspaceId: workspace.id,
+            },
+            { session: transactionSession }
+          )
+            .session(transactionSession)
+            .exec();
+          this.debug(
+            `Deleted customers for ${JSON.stringify({ id: workspace.id })}`,
+            this.remove.name,
+            session,
+            (<Account>user).id
+          );
+
+          await this.customersService.CustomerKeysModel.deleteMany(
+            {
+              workspaceId: workspace.id,
+            },
+            { session: transactionSession }
+          )
+            .session(transactionSession)
+            .exec();
+          this.debug(
+            `Deleted customer keys for ${JSON.stringify({ id: account.id })}`,
+            this.remove.name,
+            session,
+            (<Account>user).id
+          );
+        }
+      }
 
       await this.accountsRepository.delete(account.id);
       this.debug(

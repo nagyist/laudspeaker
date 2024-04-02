@@ -16,6 +16,7 @@ import {
   CustomerKeysSchema,
 } from '../customers/schemas/customer-keys.schema';
 import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { OrganizationsModule } from '../organizations/organizations.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { Workspaces } from '../workspaces/entities/workspaces.entity';
     forwardRef(() => JourneysModule),
     forwardRef(() => TemplatesModule),
     forwardRef(() => StepsModule),
+    forwardRef(() => OrganizationsModule),
     WebhooksModule,
   ],
   controllers: [AccountsController],

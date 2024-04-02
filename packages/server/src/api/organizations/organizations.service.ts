@@ -37,6 +37,8 @@ export class OrganizationService {
     public organizationInvitesRepository: Repository<OrganizationInvites>,
     @InjectRepository(OrganizationTeam)
     public organizationTeamRepository: Repository<OrganizationTeam>,
+    @InjectRepository(Organization)
+    public organizationRepository: Repository<Organization>,
     @InjectRepository(Account)
     public accountRepository: Repository<Account>,
     @InjectQueue('message') private readonly messageQueue: Queue,

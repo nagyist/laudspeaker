@@ -653,6 +653,7 @@ export class AudiencesService {
             );
             jobId = await this.templatesService.queueMessage(
               account,
+              workspace,
               toTemplates[templateIndex],
               customer,
               event,

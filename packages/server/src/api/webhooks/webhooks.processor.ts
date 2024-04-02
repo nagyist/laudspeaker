@@ -20,6 +20,7 @@ import { TemplatesService } from '../templates/templates.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Account } from '../accounts/entities/accounts.entity';
 import { Repository } from 'typeorm';
+import { Workspaces } from '../workspaces/entities/workspaces.entity';
 
 @Processor('webhooks', { removeOnComplete: { age: 0, count: 0 } })
 @Injectable()
@@ -31,8 +32,8 @@ export class WebhooksProcessor extends WorkerHost {
     private readonly logger: Logger,
     private readonly webhooksService: WebhooksService,
     private readonly templatesService: TemplatesService,
-    @InjectRepository(Account)
-    private accountRepository: Repository<Account>
+    @InjectRepository(Workspaces)
+    private workspacesRepository: Repository<Workspaces>
   ) {
     super();
   }
@@ -140,11 +141,10 @@ export class WebhooksProcessor extends WorkerHost {
         ])
       )
     );
-    const account = await this.accountRepository.findOne({
-      where: { id: job.data.accountId },
-      relations: ['teams.organization.workspaces'],
+
+    const workspace = await this.workspacesRepository.findOneBy({
+      id: job.data.workspaceId,
     });
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
     let retriesCount = 0;
     let success = false;

@@ -460,6 +460,7 @@ export class CronService {
                     step.workspace.id,
                     session
                   ),
+                workspace: step.workspace,
                 session: session,
                 journey: journeys[journeyIndex],
                 customer: await this.customerModel
@@ -571,6 +572,7 @@ export class CronService {
           name: StepType.MESSAGE,
           data: {
             owner: requeue.workspace?.organization?.owner,
+            workspace: requeue.workspace,
             journey: requeue.step.journey,
             step: requeue.step,
             session,

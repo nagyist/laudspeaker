@@ -186,6 +186,7 @@ export class TransitionProcessor extends WorkerHost {
         case StepType.START:
           await this.handleStart(
             job.data.owner,
+            job.data.workspace,
             job.data.journey,
             job.data.step,
             job.data.session,
@@ -207,6 +208,7 @@ export class TransitionProcessor extends WorkerHost {
         case StepType.MESSAGE:
           await this.handleMessage(
             job.data.owner,
+            job.data.workspace,
             job.data.journey,
             job.data.step,
             job.data.session,
@@ -218,6 +220,7 @@ export class TransitionProcessor extends WorkerHost {
         case StepType.LOOP:
           await this.handleLoop(
             job.data.owner,
+            job.data.workspace,
             job.data.journey,
             job.data.step,
             job.data.session,
@@ -255,6 +258,7 @@ export class TransitionProcessor extends WorkerHost {
         case StepType.TIME_DELAY:
           await this.handleTimeDelay(
             job.data.owner,
+            job.data.workspace,
             job.data.journey,
             job.data.step,
             job.data.session,
@@ -266,6 +270,7 @@ export class TransitionProcessor extends WorkerHost {
         case StepType.TIME_WINDOW:
           await this.handleTimeWindow(
             job.data.owner,
+            job.data.workspace,
             job.data.journey,
             job.data.step,
             job.data.session,
@@ -277,6 +282,7 @@ export class TransitionProcessor extends WorkerHost {
         case StepType.WAIT_UNTIL_BRANCH:
           await this.handleWaitUntil(
             job.data.owner,
+            job.data.workspace,
             job.data.journey,
             job.data.step,
             job.data.session,
@@ -289,6 +295,7 @@ export class TransitionProcessor extends WorkerHost {
         case StepType.EXPERIMENT:
           await this.handleExperiment(
             job.data.owner,
+            job.data.workspace,
             job.data.journey,
             job.data.step,
             job.data.session,
@@ -318,248 +325,251 @@ export class TransitionProcessor extends WorkerHost {
    * @param queryRunner
    * @param transactionSession
    */
-  async handleCustomComponent(
-    ownerID: string,
-    stepID: string,
-    session: string,
-    customerID: string,
-    journeyID: string,
-    queryRunner: QueryRunner,
-    transactionSession: mongoose.mongo.ClientSession,
-    event?: string
-  ) {
-    /**
-     * Boilerplate Step One Start
-     */
-    const owner = await queryRunner.manager.findOne(Account, {
-      where: { id: ownerID },
-      relations: ['teams.organization.workspaces'],
-    });
-    const workspace = owner.teams?.[0]?.organization?.workspaces?.[0];
+  // async handleCustomComponent(
+  //   ownerID: string,
+  //   workspaceID: string,
+  //   stepID: string,
+  //   session: string,
+  //   customerID: string,
+  //   journeyID: string,
+  //   queryRunner: QueryRunner,
+  //   transactionSession: mongoose.mongo.ClientSession,
+  //   event?: string
+  // ) {
+  //   /**
+  //    * Boilerplate Step One Start
+  //    */
+  //   const owner = await queryRunner.manager.findOne(Account, {
+  //     where: { id: ownerID },
+  //     relations: ['teams.organization.workspaces'],
+  //   });
+  //   const workspace = await queryRunner.manager.findOne(Workspaces, {
+  //     where: { id: workspaceID },
+  //   });
 
-    const journey = await this.journeysService.findByID(
-      owner,
-      journeyID,
-      session,
-      queryRunner
-    );
+  //   const journey = await this.journeysService.findByID(
+  //     owner,
+  //     journeyID,
+  //     session,
+  //     queryRunner
+  //   );
 
-    const currentStep = await queryRunner.manager.findOne(Step, {
-      where: {
-        id: stepID,
-        type: StepType.TRACKER,
-      },
-      lock: { mode: 'pessimistic_write' },
-    });
+  //   const currentStep = await queryRunner.manager.findOne(Step, {
+  //     where: {
+  //       id: stepID,
+  //       type: StepType.TRACKER,
+  //     },
+  //     lock: { mode: 'pessimistic_write' },
+  //   });
 
-    const customer = await this.customersService.findById(
-      workspace,
-      customerID
-    );
+  //   const customer = await this.customersService.findById(
+  //     workspace,
+  //     customerID
+  //   );
 
-    const location = await this.journeyLocationsService.findForWrite(
-      journey,
-      customer,
-      session,
-      owner,
-      queryRunner
-    );
+  //   const location = await this.journeyLocationsService.findForWrite(
+  //     journey,
+  //     customer,
+  //     session,
+  //     owner,
+  //     queryRunner
+  //   );
 
-    if (!location) {
-      this.warn(
-        `${JSON.stringify({
-          warning: 'Customer not in step',
-          customerID,
-          currentStep,
-        })}`,
-        this.handleCustomComponent.name,
-        session,
-        owner.email
-      );
-      return;
-    }
+  //   if (!location) {
+  //     this.warn(
+  //       `${JSON.stringify({
+  //         warning: 'Customer not in step',
+  //         customerID,
+  //         currentStep,
+  //       })}`,
+  //       this.handleCustomComponent.name,
+  //       session,
+  //       owner.email
+  //     );
+  //     return;
+  //   }
 
-    const nextStep = await queryRunner.manager.findOne(Step, {
-      where: {
-        id: currentStep.metadata.destination,
-      },
-    });
-    /**
-     * Boilerplate Step One Finish
-     */
+  //   const nextStep = await queryRunner.manager.findOne(Step, {
+  //     where: {
+  //       id: currentStep.metadata.destination,
+  //     },
+  //   });
+  //   /**
+  //    * Boilerplate Step One Finish
+  //    */
 
-    /**
-     * Step Business Logic Start
-     */
-    const templateID = currentStep.metadata.template;
-    const template = await this.templatesService.transactionalFindOneById(
-      owner,
-      templateID.toString(),
-      queryRunner
-    );
+  //   /**
+  //    * Step Business Logic Start
+  //    */
+  //   const templateID = currentStep.metadata.template;
+  //   const template = await this.templatesService.transactionalFindOneById(
+  //     owner,
+  //     templateID.toString(),
+  //     queryRunner
+  //   );
 
-    if (template.type !== TemplateType.CUSTOM_COMPONENT) {
-      throw new Error(
-        `Cannot use ${template.type} template for a custom component step`
-      );
-    }
-    const { action, humanReadableName, pushedValues } = currentStep.metadata;
+  //   if (template.type !== TemplateType.CUSTOM_COMPONENT) {
+  //     throw new Error(
+  //       `Cannot use ${template.type} template for a custom component step`
+  //     );
+  //   }
+  //   const { action, humanReadableName, pushedValues } = currentStep.metadata;
 
-    //1. Check if custom components exists on this customer
-    if (!customer.customComponents) customer.customComponents = {};
+  //   //1. Check if custom components exists on this customer
+  //   if (!customer.customComponents) customer.customComponents = {};
 
-    // 2. Check if this specific component exists on this customer,
-    // If not, create it and put in the default values from the template
-    if (!customer.customComponents[humanReadableName])
-      customer.customComponents[humanReadableName] = {
-        hidden: true,
-        ...template.customFields,
-        delivered: false,
-      };
+  //   // 2. Check if this specific component exists on this customer,
+  //   // If not, create it and put in the default values from the template
+  //   if (!customer.customComponents[humanReadableName])
+  //     customer.customComponents[humanReadableName] = {
+  //       hidden: true,
+  //       ...template.customFields,
+  //       delivered: false,
+  //     };
 
-    // 3. Update the custom component to reflect the
-    // details outlined in the step that triggers this component.
-    customer.customComponents[humanReadableName].hidden =
-      action === CustomComponentAction.HIDE ? true : false;
-    customer.customComponents[humanReadableName].step = stepID;
-    customer.customComponents[humanReadableName].template = String(templateID);
-    customer.customComponents[humanReadableName] = {
-      ...customer.customComponents[humanReadableName],
-      ...pushedValues,
-    };
+  //   // 3. Update the custom component to reflect the
+  //   // details outlined in the step that triggers this component.
+  //   customer.customComponents[humanReadableName].hidden =
+  //     action === CustomComponentAction.HIDE ? true : false;
+  //   customer.customComponents[humanReadableName].step = stepID;
+  //   customer.customComponents[humanReadableName].template = String(templateID);
+  //   customer.customComponents[humanReadableName] = {
+  //     ...customer.customComponents[humanReadableName],
+  //     ...pushedValues,
+  //   };
 
-    // 4. Record that the message was sent
-    await this.webhooksService.insertMessageStatusToClickhouse(
-      [
-        {
-          stepId: stepID,
-          createdAt: new Date().toISOString(),
-          customerId: customerID,
-          event: 'sent',
-          eventProvider: ClickHouseEventProvider.TRACKER,
-          messageId: humanReadableName,
-          templateId: String(templateID),
-          workspaceId: workspace.id,
-          processed: true,
-        },
-      ],
-      session
-    );
+  //   // 4. Record that the message was sent
+  //   await this.webhooksService.insertMessageStatusToClickhouse(
+  //     [
+  //       {
+  //         stepId: stepID,
+  //         createdAt: new Date().toISOString(),
+  //         customerId: customerID,
+  //         event: 'sent',
+  //         eventProvider: ClickHouseEventProvider.TRACKER,
+  //         messageId: humanReadableName,
+  //         templateId: String(templateID),
+  //         workspaceId: workspace.id,
+  //         processed: true,
+  //       },
+  //     ],
+  //     session
+  //   );
 
-    // 5. Attempt delivery. If delivered, record delivery event
-    const isDelivered = await this.websocketGateway.sendCustomComponentState(
-      customer._id,
-      humanReadableName,
-      customer.customComponents[humanReadableName]
-    );
-    await this.websocketGateway.sendProcessed(
-      customer._id,
-      event,
-      humanReadableName
-    );
-    if (isDelivered)
-      await this.webhooksService.insertMessageStatusToClickhouse(
-        [
-          {
-            stepId: stepID,
-            createdAt: new Date().toISOString(),
-            customerId: customerID,
-            event: 'delivered',
-            eventProvider: ClickHouseEventProvider.TRACKER,
-            messageId: humanReadableName,
-            templateId: String(templateID),
-            workspaceId: workspace.id,
-            processed: true,
-          },
-        ],
-        session
-      );
+  //   // 5. Attempt delivery. If delivered, record delivery event
+  //   const isDelivered = await this.websocketGateway.sendCustomComponentState(
+  //     customer._id,
+  //     humanReadableName,
+  //     customer.customComponents[humanReadableName]
+  //   );
+  //   await this.websocketGateway.sendProcessed(
+  //     customer._id,
+  //     event,
+  //     humanReadableName
+  //   );
+  //   if (isDelivered)
+  //     await this.webhooksService.insertMessageStatusToClickhouse(
+  //       [
+  //         {
+  //           stepId: stepID,
+  //           createdAt: new Date().toISOString(),
+  //           customerId: customerID,
+  //           event: 'delivered',
+  //           eventProvider: ClickHouseEventProvider.TRACKER,
+  //           messageId: humanReadableName,
+  //           templateId: String(templateID),
+  //           workspaceId: workspace.id,
+  //           processed: true,
+  //         },
+  //       ],
+  //       session
+  //     );
 
-    // 6. Set delivery status.
-    customer.customComponents[humanReadableName].delivered = isDelivered;
+  //   // 6. Set delivery status.
+  //   customer.customComponents[humanReadableName].delivered = isDelivered;
 
-    // 7. Commit customer changes to the db
-    const res = await this.customerModel
-      .findByIdAndUpdate(customer.id, {
-        $set: { customComponents: { ...customer.customComponents } },
-      })
-      .session(transactionSession)
-      .exec();
-    this.debug(
-      `${JSON.stringify({ res: res })}`,
-      this.handleCustomComponent.name,
-      session
-    );
-    this.phClient.capture({
-      distinctId: owner.email,
-      event: 'message_sent',
-      properties: {
-        type: 'custom_component',
-        step: stepID,
-        customer: customerID,
-        template: templateID,
-        provider: ClickHouseEventProvider.TRACKER,
-      },
-    });
+  //   // 7. Commit customer changes to the db
+  //   const res = await this.customerModel
+  //     .findByIdAndUpdate(customer.id, {
+  //       $set: { customComponents: { ...customer.customComponents } },
+  //     })
+  //     .session(transactionSession)
+  //     .exec();
+  //   this.debug(
+  //     `${JSON.stringify({ res: res })}`,
+  //     this.handleCustomComponent.name,
+  //     session
+  //   );
+  //   this.phClient.capture({
+  //     distinctId: owner.email,
+  //     event: 'message_sent',
+  //     properties: {
+  //       type: 'custom_component',
+  //       step: stepID,
+  //       customer: customerID,
+  //       template: templateID,
+  //       provider: ClickHouseEventProvider.TRACKER,
+  //     },
+  //   });
 
-    /**
-     * Step Business Logic Finish
-     */
+  //   /**
+  //    * Step Business Logic Finish
+  //    */
 
-    /**
-     * Boilerplate Step Two Start
-     */
-    if (nextStep) {
-      // Destination exists, move customer into destination
-      nextStep.customers.push(
-        JSON.stringify({
-          customerID,
-          timestamp: Temporal.Now.instant().toString(),
-        })
-      );
-      _.remove(currentStep.customers, (customer) => {
-        return JSON.parse(customer).customerID === customerID;
-      });
-      await queryRunner.manager.save(currentStep);
-      const newNext = await queryRunner.manager.save(nextStep);
+  //   /**
+  //    * Boilerplate Step Two Start
+  //    */
+  //   if (nextStep) {
+  //     // Destination exists, move customer into destination
+  //     nextStep.customers.push(
+  //       JSON.stringify({
+  //         customerID,
+  //         timestamp: Temporal.Now.instant().toString(),
+  //       })
+  //     );
+  //     _.remove(currentStep.customers, (customer) => {
+  //       return JSON.parse(customer).customerID === customerID;
+  //     });
+  //     await queryRunner.manager.save(currentStep);
+  //     const newNext = await queryRunner.manager.save(nextStep);
 
-      if (
-        newNext.type !== StepType.TIME_DELAY &&
-        newNext.type !== StepType.TIME_WINDOW &&
-        newNext.type !== StepType.WAIT_UNTIL_BRANCH
-      )
-        await this.transitionQueue.add(newNext.type, {
-          ownerID,
-          step: newNext,
-          session: session,
-          customerID,
-          journeyID,
-          event,
-        });
-      else {
-        await this.journeyLocationsService.unlock(location, null);
-        this.warn(
-          `${JSON.stringify({ warning: 'Releasing lock' })}`,
-          this.handleCustomComponent.name,
-          session,
-          owner.email
-        );
-      }
-    } else {
-      // Destination does not exist, customer has stopped moving so
-      // we can release lock
-      await this.journeyLocationsService.unlock(location, null);
-      this.warn(
-        `${JSON.stringify({ warning: 'Releasing lock' })}`,
-        this.handleCustomComponent.name,
-        session,
-        owner.email
-      );
-    }
-    /**
-     * Boilerplate Step Two Finish
-     */
-  }
+  //     if (
+  //       newNext.type !== StepType.TIME_DELAY &&
+  //       newNext.type !== StepType.TIME_WINDOW &&
+  //       newNext.type !== StepType.WAIT_UNTIL_BRANCH
+  //     )
+  //       await this.transitionQueue.add(newNext.type, {
+  //         ownerID,
+  //         step: newNext,
+  //         session: session,
+  //         customerID,
+  //         journeyID,
+  //         event,
+  //       });
+  //     else {
+  //       await this.journeyLocationsService.unlock(location, null);
+  //       this.warn(
+  //         `${JSON.stringify({ warning: 'Releasing lock' })}`,
+  //         this.handleCustomComponent.name,
+  //         session,
+  //         owner.email
+  //       );
+  //     }
+  //   } else {
+  //     // Destination does not exist, customer has stopped moving so
+  //     // we can release lock
+  //     await this.journeyLocationsService.unlock(location, null);
+  //     this.warn(
+  //       `${JSON.stringify({ warning: 'Releasing lock' })}`,
+  //       this.handleCustomComponent.name,
+  //       session,
+  //       owner.email
+  //     );
+  //   }
+  //   /**
+  //    * Boilerplate Step Two Finish
+  //    */
+  // }
 
   /**
    * Handle message step;
@@ -570,6 +580,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleMessage(
     owner: Account,
+    workspace: Workspaces,
     journey: Journey,
     step: Step,
     session: string,
@@ -578,7 +589,6 @@ export class TransitionProcessor extends WorkerHost {
     event?: string
   ) {
     let job;
-    const workspace = owner.teams?.[0]?.organization?.workspaces?.[0];
 
     // Rate limiting and sending quiet hours will be stored here
     type MessageSendType =
@@ -747,7 +757,7 @@ export class TransitionProcessor extends WorkerHost {
 
       const { _id, workspaceId, workflows, journeys, ...tags } = customer;
       const filteredTags = cleanTagsForSending(tags);
-      const sender = new MessageSender(this.accountRepository);
+      const sender = new MessageSender(this.workspacesRepository);
 
       switch (template.type) {
         case TemplateType.EMAIL:
@@ -777,6 +787,7 @@ export class TransitionProcessor extends WorkerHost {
           const ret = await sender.process({
             name: TemplateType.EMAIL,
             accountID: owner.id,
+            workspaceID: workspace.id,
             cc: template.cc,
             customerID: customer._id,
             domain: sendingDomain,
@@ -819,6 +830,7 @@ export class TransitionProcessor extends WorkerHost {
                 await sender.process({
                   name: 'android',
                   accountID: owner.id,
+                  workspaceID: workspace.id,
                   stepID: step.id,
                   customerID: customer._id,
                   firebaseCredentials:
@@ -839,6 +851,7 @@ export class TransitionProcessor extends WorkerHost {
                 await sender.process({
                   name: 'ios',
                   accountID: owner.id,
+                  workspaceID: workspace.id,
                   stepID: step.id,
                   customerID: customer._id,
                   firebaseCredentials: workspace.pushPlatforms.iOS.credentials,
@@ -857,6 +870,7 @@ export class TransitionProcessor extends WorkerHost {
                 await sender.process({
                   name: 'ios',
                   accountID: owner.id,
+                  workspaceID: workspace.id,
                   stepID: step.id,
                   customerID: customer._id,
                   firebaseCredentials: workspace.pushPlatforms.iOS.credentials,
@@ -875,6 +889,7 @@ export class TransitionProcessor extends WorkerHost {
                 await sender.process({
                   name: 'android',
                   accountID: owner.id,
+                  workspaceID: workspace.id,
                   stepID: step.id,
                   customerID: customer._id,
                   firebaseCredentials:
@@ -912,6 +927,7 @@ export class TransitionProcessor extends WorkerHost {
             await sender.process({
               name: TemplateType.SLACK,
               accountID: owner.id,
+              workspaceID: workspace.id,
               stepID: step.id,
               customerID: customer._id,
               templateID: template.id,
@@ -934,6 +950,7 @@ export class TransitionProcessor extends WorkerHost {
             await sender.process({
               name: TemplateType.SMS,
               accountID: owner.id,
+              workspaceID: workspace.id,
               stepID: step.id,
               customerID: customer._id,
               templateID: template.id,
@@ -1066,6 +1083,7 @@ export class TransitionProcessor extends WorkerHost {
       );
       await this.stepsService.requeueMessage(
         owner,
+        workspace,
         step,
         customer._id,
         requeueTime,
@@ -1096,6 +1114,7 @@ export class TransitionProcessor extends WorkerHost {
       ) {
         job = {
           owner,
+          workspace,
           journey,
           step: nextStep,
           session,
@@ -1128,6 +1147,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleStart(
     owner: Account,
+    workspace: Workspaces,
     journey: Journey,
     step: Step,
     session: string,
@@ -1157,6 +1177,7 @@ export class TransitionProcessor extends WorkerHost {
       ) {
         job = {
           owner,
+          workspace,
           journey,
           step: nextStep,
           session,
@@ -1208,6 +1229,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleTimeDelay(
     owner: Account,
+    workspace: Workspaces,
     journey: Journey,
     step: Step,
     session: string,
@@ -1242,6 +1264,7 @@ export class TransitionProcessor extends WorkerHost {
         ) {
           job = {
             owner,
+            workspace,
             journey,
             step: nextStep,
             session,
@@ -1277,6 +1300,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleTimeWindow(
     owner: Account,
+    workspace: Workspaces,
     journey: Journey,
     step: Step,
     session: string,
@@ -1344,6 +1368,7 @@ export class TransitionProcessor extends WorkerHost {
         ) {
           job = {
             owner,
+            workspace,
             journey,
             step: nextStep,
             session,
@@ -1382,6 +1407,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleWaitUntil(
     owner: Account,
+    workspace: Workspaces,
     journey: Journey,
     step: Step,
     session: string,
@@ -1491,6 +1517,7 @@ export class TransitionProcessor extends WorkerHost {
           ) {
             job = {
               owner,
+              workspace,
               journey,
               step: nextStep,
               session,
@@ -1629,6 +1656,7 @@ export class TransitionProcessor extends WorkerHost {
       ) {
         job = {
           owner,
+          workspace,
           journey,
           step: nextStep,
           session,
@@ -1658,6 +1686,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleLoop(
     owner: Account,
+    workspace: Workspaces,
     journey: Journey,
     step: Step,
     session: string,
@@ -1687,6 +1716,7 @@ export class TransitionProcessor extends WorkerHost {
       ) {
         job = {
           owner,
+          workspace,
           journey,
           step: nextStep,
           session,
@@ -1709,6 +1739,7 @@ export class TransitionProcessor extends WorkerHost {
 
   async handleExperiment(
     owner: Account,
+    workspace: Workspaces,
     journey: Journey,
     step: Step,
     session: string,
@@ -1745,6 +1776,7 @@ export class TransitionProcessor extends WorkerHost {
       ) {
         job = {
           owner,
+          workspace,
           journey,
           step: nextStep,
           session,

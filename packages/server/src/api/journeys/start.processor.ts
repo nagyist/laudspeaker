@@ -193,6 +193,7 @@ export class StartProcessor extends WorkerHost {
           name: 'start',
           data: {
             owner: job.data.owner,
+            workspace: job.data.workspace,
             journey: job.data.journey,
             step: job.data.step,
             session: job.data.session,
@@ -206,6 +207,7 @@ export class StartProcessor extends WorkerHost {
           name: 'start',
           data: {
             owner: job.data.owner,
+            workspace: job.data.workspace,
             journey: job.data.journey,
             step: job.data.step,
             session: job.data.session,

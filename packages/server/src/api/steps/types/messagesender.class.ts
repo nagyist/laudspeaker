@@ -15,6 +15,7 @@ import { Account } from '@/api/accounts/entities/accounts.entity';
 import { Repository } from 'typeorm';
 import { Resend } from 'resend';
 import { randomUUID } from 'crypto';
+import { Workspaces } from '@/api/workspaces/entities/workspaces.entity';
 
 export enum MessageType {
   SMS = 'sms',
@@ -51,7 +52,7 @@ export class MessageSender {
         job.stepID,
         job.customerID,
         job.templateID,
-        job.accountID,
+        job.workspaceID,
         job.email,
         job.domain,
         job.trackingEmail,
@@ -69,7 +70,7 @@ export class MessageSender {
         job.stepID,
         job.customerID,
         job.templateID,
-        job.accountID,
+        job.workspaceID,
         job.trackingEmail
       );
     },
@@ -84,7 +85,7 @@ export class MessageSender {
         job.customerID,
         job.stepID,
         job.filteredTags,
-        job.accountID
+        job.workspaceID
       );
     },
     [MessageType.ANDROID]: async (job) => {
@@ -98,14 +99,14 @@ export class MessageSender {
         job.customerID,
         job.stepID,
         job.filteredTags,
-        job.accountID,
+        job.workspaceID,
         job.quietHours
       );
     },
     [MessageType.SLACK]: async (job) => {
       return await this.handleSlack(
         job.templateID,
-        job.accountID,
+        job.workspaceID,
         job.stepID,
         job.methodName,
         job.args,
@@ -121,8 +122,8 @@ export class MessageSender {
     },
   };
 
-  constructor(private accountRepository: Repository<Account>) {
-    this.accountRepository = accountRepository;
+  constructor(private workspacesRepository: Repository<Workspaces>) {
+    this.workspacesRepository = workspacesRepository;
   }
 
   async process(job: any): Promise<ClickHouseMessage[]> {
@@ -159,7 +160,7 @@ export class MessageSender {
     stepID: string,
     customerID: string,
     templateID: string,
-    accountID: string,
+    workspaceID: string,
     email?: string,
     domain?: string,
     trackingEmail?: string,
@@ -171,11 +172,9 @@ export class MessageSender {
     let textWithInsertedTags, subjectWithInsertedTags: string | undefined;
     let ret: ClickHouseMessage[];
 
-    const account = await this.accountRepository.findOne({
-      where: { id: accountID },
-      relations: ['teams.organization.workspaces'],
+    const workspace = await this.workspacesRepository.findOneBy({
+      id: workspaceID,
     });
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
     try {
       if (text)
         textWithInsertedTags = await this.tagEngine.parseAndRender(
@@ -224,6 +223,7 @@ export class MessageSender {
                 stepId: stepID,
                 customerId: customerID,
                 templateId: templateID,
+                workspaceId: workspace.id,
               },
               cc: cc,
             },
@@ -266,8 +266,8 @@ export class MessageSender {
               value: String(templateID),
             },
             {
-              name: 'accountId',
-              value: accountID,
+              name: 'workspaceId',
+              value: workspaceID,
             },
           ],
         });
@@ -361,18 +361,17 @@ export class MessageSender {
     stepID: string,
     customerID: string,
     templateID: string,
-    accountID: string,
+    workspaceID: string,
     trackingEmail: string
   ): Promise<ClickHouseMessage[]> {
     if (!to) {
       return;
     }
     let textWithInsertedTags: string | undefined;
-    const account = await this.accountRepository.findOne({
-      where: { id: accountID },
-      relations: ['teams.organization.workspaces'],
+
+    const workspace = await this.workspacesRepository.findOneBy({
+      id: workspaceID,
     });
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
     let ret: ClickHouseMessage[];
     try {
       if (text) {
@@ -456,7 +455,7 @@ export class MessageSender {
     customerID: string,
     stepID: string,
     filteredTags: any,
-    accountID: string
+    workspaceID: string
   ): Promise<ClickHouseMessage[]> {
     if (!iosDeviceToken) {
       return;
@@ -464,11 +463,9 @@ export class MessageSender {
     let textWithInsertedTags, titleWithInsertedTags: string | undefined;
     let ret: ClickHouseMessage[];
 
-    const account = await this.accountRepository.findOne({
-      where: { id: accountID },
-      relations: ['teams.organization.workspaces'],
+    const workspace = await this.workspacesRepository.findOneBy({
+      id: workspaceID,
     });
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
     try {
       textWithInsertedTags = await this.tagEngine.parseAndRender(
@@ -499,14 +496,14 @@ export class MessageSender {
     }
     let firebaseApp: admin.app.App;
     try {
-      firebaseApp = admin.app(accountID);
+      firebaseApp = admin.app(workspaceID);
     } catch (e: any) {
       if (e.code == 'app/no-app') {
         firebaseApp = admin.initializeApp(
           {
             credential: admin.credential.cert(firebaseCredentials),
           },
-          accountID
+          workspaceID
         );
       } else {
         return [
@@ -591,7 +588,7 @@ export class MessageSender {
    * @param customerID
    * @param stepID
    * @param filteredTags
-   * @param accountID
+   * @param workspaceID
    * @returns
    */
   async handleAndroid(
@@ -604,17 +601,15 @@ export class MessageSender {
     customerID: string,
     stepID: string,
     filteredTags: any,
-    accountID: string,
+    workspaceID: string,
     quietHours: any
   ): Promise<ClickHouseMessage[]> {
     if (!androidDeviceToken) {
       return;
     }
-    const account = await this.accountRepository.findOne({
-      where: { id: accountID },
-      relations: ['teams.organization.workspaces'],
+    const workspace = await this.workspacesRepository.findOneBy({
+      id: workspaceID,
     });
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
     let textWithInsertedTags, titleWithInsertedTags: string | undefined;
     let ret: ClickHouseMessage[];
     try {
@@ -646,14 +641,14 @@ export class MessageSender {
     }
     let firebaseApp: admin.app.App;
     try {
-      firebaseApp = admin.app(accountID);
+      firebaseApp = admin.app(workspaceID);
     } catch (e: any) {
       if (e.code == 'app/no-app') {
         firebaseApp = admin.initializeApp(
           {
             credential: admin.credential.cert(firebaseCredentials),
           },
-          accountID
+          workspaceID
         );
       } else {
         return [
@@ -736,7 +731,7 @@ export class MessageSender {
   /**
    *
    * @param templateID
-   * @param accountID
+   * @param workspaceID
    * @param stepID
    * @param methodName
    * @param args
@@ -746,7 +741,7 @@ export class MessageSender {
    */
   async handleSlack(
     templateID: string,
-    accountID: string,
+    workspaceID: string,
     stepID: string,
     methodName: string,
     args: any,
@@ -754,11 +749,9 @@ export class MessageSender {
     customerID: string,
     trackingEmail: string
   ): Promise<ClickHouseMessage[]> {
-    const account = await this.accountRepository.findOne({
-      where: { id: accountID },
-      relations: ['teams.organization.workspaces'],
+    const workspace = await this.workspacesRepository.findOneBy({
+      id: workspaceID,
     });
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
     try {
       if (args.text) {
         args.text = await this.tagEngine.parseAndRender(args.text, tags || {}, {

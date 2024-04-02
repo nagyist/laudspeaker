@@ -46,8 +46,6 @@ export class StepsService {
     public stepsRepository: Repository<Step>,
     @InjectRepository(Requeue)
     public requeueRepository: Repository<Requeue>,
-    @InjectQueue('transition') private readonly transitionQueue: Queue,
-    @InjectQueue('start') private readonly startQueue: Queue,
     @Inject(JourneyLocationsService)
     private readonly journeyLocationsService: JourneyLocationsService,
     @Inject(forwardRef(() => CustomersService))
@@ -210,6 +208,7 @@ export class StepsService {
         name: 'start',
         data: {
           owner: account,
+          workspace,
           step: startStep[0],
           journey,
           session: session,
@@ -415,7 +414,6 @@ export class StepsService {
    * @returns
    */
   async findByJourneyAndType(
-    account: Account,
     workspace: Workspaces,
     journey: string,
     type: StepType,
@@ -599,7 +597,7 @@ export class StepsService {
     session: string
   ): Promise<Step> {
     try {
-      const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+      const workspace = account.currentWorkspace;
 
       const step = await this.stepsRepository.findOneBy({
         workspace: { id: workspace.id },
@@ -639,7 +637,7 @@ export class StepsService {
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
-      const workspace = account.teams?.[0]?.organization?.workspaces?.[0];
+      const workspace = account.currentWorkspace;
       await queryRunner.query(
         `
           WITH RECURSIVE nodes_to_delete AS (
@@ -744,14 +742,13 @@ export class StepsService {
   }
   async requeueMessage(
     account: Account,
+    workspace: Workspaces,
     step: Step,
     customerId: string,
     requeueTime: Date,
     session: string,
     queryRunner?: QueryRunner
   ) {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
     if (queryRunner) {
       await queryRunner.manager.save(Requeue, {
         workspace: workspace,
@@ -769,21 +766,21 @@ export class StepsService {
     }
   }
 
-  async deleteRequeueMessage(
-    account: Account,
-    step: Step,
-    customerId: string,
-    session: string,
-    queryRunner: QueryRunner
-  ) {
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+  // async deleteRequeueMessage(
+  //   account: Account,
+  //   step: Step,
+  //   customerId: string,
+  //   session: string,
+  //   queryRunner: QueryRunner
+  // ) {
+  //   const workspace = account.currentWorkspace;
 
-    await queryRunner.manager.delete(Requeue, {
-      workspace: { id: workspace.id },
-      step: { id: step.id },
-      customerId: customerId,
-    });
-  }
+  //   await queryRunner.manager.delete(Requeue, {
+  //     workspace: { id: workspace.id },
+  //     step: { id: step.id },
+  //     customerId: customerId,
+  //   });
+  // }
 
   async getRequeuedMessages(session, queryRunner: QueryRunner) {
     return await queryRunner.manager.find(Requeue, {
