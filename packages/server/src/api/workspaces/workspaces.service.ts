@@ -27,6 +27,9 @@ import { UpdateTwilioChannelDto } from './dto/twilio/update-twilio-channel.dto';
 import { CreatePushChannelDto } from './dto/push/create-push-channel.dto';
 import { UpdatePushChannelDto } from './dto/push/update-push-channel.dto';
 import { AccountsService } from '../accounts/accounts.service';
+import { CreateResendChannelDto } from './dto/resend/create-resend-channel.dto';
+import { UpdateResendChannelDto } from './dto/resend/update-resend-channel.dto';
+import { ResendSendingOption } from './entities/resend-sending-option.entity';
 
 export type WorkspaceConnection =
   | WorkspaceMailgunConnection
@@ -68,6 +71,10 @@ export class WorkspacesService {
     private workspaceSendgridConnectionRepository: Repository<WorkspaceSendgridConnection>,
     @InjectRepository(SendgridSendingOption)
     private sendgridSendingOptionRepository: Repository<SendgridSendingOption>,
+    @InjectRepository(WorkspaceResendConnection)
+    private workspaceResendConnectionRepository: Repository<WorkspaceResendConnection>,
+    @InjectRepository(ResendSendingOption)
+    private resendSendingOptionRepository: Repository<ResendSendingOption>,
     @InjectRepository(WorkspaceTwilioConnection)
     private workspaceTwilioConnectionRepository: Repository<WorkspaceTwilioConnection>,
     @InjectRepository(WorkspacePushConnection)
@@ -288,6 +295,68 @@ export class WorkspacesService {
       sendingOptions.map((option) => ({
         ...option,
         sendgridConnection: { id: channel.id },
+      }))
+    );
+  }
+
+  public async createResendChannel(
+    account: Account,
+    createResendChannelDto: CreateResendChannelDto
+  ) {
+    const workspace = account.teams[0].organization.workspaces[0];
+    const { sendingOptions, ...channelSettings } = createResendChannelDto;
+
+    const connection = await this.workspaceResendConnectionRepository.save({
+      ...channelSettings,
+      workspace: { id: workspace.id },
+    });
+
+    if (sendingOptions.length === 0) return;
+
+    await this.resendSendingOptionRepository.save(
+      sendingOptions.map((option) => ({
+        ...option,
+        resendConnection: { id: connection.id },
+      }))
+    );
+  }
+
+  public async updateResendChannel(
+    account: Account,
+    id: string,
+    updateResendChannelDto: UpdateResendChannelDto
+  ) {
+    const workspace = account.teams[0].organization.workspaces[0];
+
+    const resendChannels = (await this.getSpecificChannels(
+      account,
+      MessageChannel.RESEND
+    )) as WorkspaceResendConnection[];
+
+    const { sendingOptions, ...channelSettings } = updateResendChannelDto;
+
+    const channel = resendChannels.find((channel) => channel.id === id);
+    if (!channel) throw new NotFoundException('Channel not found');
+
+    await this.workspaceResendConnectionRepository.save({
+      ...channel,
+      ...channelSettings,
+      id,
+      workspace: { id: workspace.id },
+    });
+
+    if (!sendingOptions) return;
+
+    await this.resendSendingOptionRepository.delete({
+      resendConnection: { id: channel.id },
+    });
+
+    if (sendingOptions.length === 0) return;
+
+    await this.resendSendingOptionRepository.save(
+      sendingOptions.map((option) => ({
+        ...option,
+        resendConnection: { id: channel.id },
       }))
     );
   }

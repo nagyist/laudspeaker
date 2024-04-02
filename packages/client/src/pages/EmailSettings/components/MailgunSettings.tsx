@@ -91,7 +91,7 @@ const MailgunSettings: FC<SendingServiceSettingsProps> = ({
           <div className="flex flex-col gap-[5px] w-full">
             <div>Sending name</div>
             <Input
-              id="mailgun-sending-email"
+              id="mailgun-sending-name"
               wrapperClassName="!w-full"
               className="w-full"
               value={option.sendingName || ""}

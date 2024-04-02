@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import arrowRightIconImage from "../svg/arrow-right.svg";
 import emailCardIconImage from "../svg/email-card-icon.svg";
 import twilioCardIconImage from "../svg/twilio-card-icon.svg";
@@ -9,7 +9,6 @@ import { useNavigate } from "react-router-dom";
 import Account from "types/Account";
 import ApiService from "services/api.service";
 import { toast } from "react-toastify";
-import { EmailSendingService } from "pages/EmailSettings/EmailSettings";
 
 export enum MessageChannel {
   MAILGUN,
@@ -88,8 +87,6 @@ const supportedMessageChannelCardsFixtures: Record<
     channel: MessageChannel.RESEND,
     title: "Email (resend)",
     icon: emailCardIconImage,
-    commingSoon: true,
-    disabled: true,
   },
   [MessageChannel.TWILIO]: {
     id: "create",
@@ -125,32 +122,41 @@ const MessageChannelTab = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [account, setAccount] = useState<Account>();
 
-  const connectedFixtures: MessageChannelCardFixture[] = [
-    ...(account?.workspace.mailgunConnections.map((connection) => ({
-      id: connection.id,
-      channel: MessageChannel.MAILGUN,
-      title: connection.name,
-      icon: emailCardIconImage,
-    })) || []),
-    ...(account?.workspace.sendgridConnections.map((connection) => ({
-      id: connection.id,
-      channel: MessageChannel.SENDGRID,
-      title: connection.name,
-      icon: emailCardIconImage,
-    })) || []),
-    ...(account?.workspace.twilioConnections.map((connection) => ({
-      id: connection.id,
-      channel: MessageChannel.TWILIO,
-      title: connection.name,
-      icon: twilioCardIconImage,
-    })) || []),
-    ...(account?.workspace.pushConnections.map((connection) => ({
-      id: connection.id,
-      channel: MessageChannel.PUSH,
-      title: connection.name,
-      icon: pushLogoIcon,
-    })) || []),
-  ];
+  const connectedFixtures: MessageChannelCardFixture[] = useMemo(
+    () => [
+      ...(account?.workspace.mailgunConnections.map((connection) => ({
+        id: connection.id,
+        channel: MessageChannel.MAILGUN,
+        title: connection.name,
+        icon: emailCardIconImage,
+      })) || []),
+      ...(account?.workspace.sendgridConnections.map((connection) => ({
+        id: connection.id,
+        channel: MessageChannel.SENDGRID,
+        title: connection.name,
+        icon: emailCardIconImage,
+      })) || []),
+      ...(account?.workspace.resendConnections.map((connection) => ({
+        id: connection.id,
+        channel: MessageChannel.RESEND,
+        title: connection.name,
+        icon: emailCardIconImage,
+      })) || []),
+      ...(account?.workspace.twilioConnections.map((connection) => ({
+        id: connection.id,
+        channel: MessageChannel.TWILIO,
+        title: connection.name,
+        icon: twilioCardIconImage,
+      })) || []),
+      ...(account?.workspace.pushConnections.map((connection) => ({
+        id: connection.id,
+        channel: MessageChannel.PUSH,
+        title: connection.name,
+        icon: pushLogoIcon,
+      })) || []),
+    ],
+    [account]
+  );
 
   const supportedFixtures = Object.values(supportedMessageChannelCardsFixtures);
 
