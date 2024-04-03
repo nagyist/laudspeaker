@@ -288,6 +288,10 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
 
     setWebhookState({
       ...webhookState,
+      headers: {
+        ...webhookState.headers,
+        "Content-Type": mimeTypeMap[newBodyType],
+      },
       body:
         newBodyType === BodyType.JSON
           ? "{}"
@@ -308,6 +312,7 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
               checked={authType === AuthType.BEARER}
               className="text-[#6366F1] focus:ring-[#6366F1] mr-2"
               readOnly
+              id="authtype_bearer"
             />
             <label htmlFor="authtype">Bearer Token</label>
           </div>
@@ -319,6 +324,7 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
               checked={authType === AuthType.BASIC}
               className="text-[#6366F1] focus:ring-[#6366F1] mr-2"
               readOnly
+              id="authtype_basic"
             />
             Basic Auth
           </div>
@@ -330,6 +336,7 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
               checked={authType === AuthType.CUSTOM}
               className="text-[#6366F1] focus:ring-[#6366F1] mr-2"
               readOnly
+              id="authtype_custom"
             />
             Custom
           </div>
@@ -341,7 +348,7 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
     ),
     Headers: (
       <>
-        {headers.map(({ id, value }) => (
+        {headers.map(({ id, value }, index) => (
           <div
             key={id}
             className="flex items-center bg-gray-200 gap-8 p-2.5 rounded"
@@ -355,7 +362,7 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
               wrapperClassName="w-full"
               className="w-full"
               name={`custom-header-${id}`}
-              id={`custom-header-${id}`}
+              id={`custom-header-${index}`}
               value={value || ""}
               onChange={(e) => handleHeaderChange(id, e)}
               onFocus={() => setSelectedRef?.(customHeaderRef)}
@@ -367,6 +374,7 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
           type={ButtonType.SECONDARY}
           className="w-fit"
           onClick={handleAddHeader}
+          id="add-header"
         >
           Add header
         </Button>
@@ -512,8 +520,19 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
                   buttonClassName="w-full"
                   className="w-fit max-w-[100px]"
                   onChange={(val) =>
-                    setWebhookState({ ...webhookState, method: val })
+                    setWebhookState({
+                      ...webhookState,
+                      method: val,
+                      headers: {
+                        ...webhookState.headers,
+                        ...(["POST", "PUT", "PATCH"].includes(val) &&
+                        !webhookState.headers["Content-Type"]
+                          ? { "Content-Type": "application/json" }
+                          : {}),
+                      },
+                    })
                   }
+                  id="webhookMethod"
                 />
                 <Input
                   wrapperClassName="w-full"
@@ -632,6 +651,7 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
                   onChange={(val) =>
                     setCurrentTab(val as keyof typeof tabComponents)
                   }
+                  dataTestId="selected-tab"
                 />
               </div>
               <div className="hidden md:block">
@@ -654,6 +674,7 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
                         onKeyDown={(e) => {
                           if (e.key === "Enter") setCurrentTab(tab);
                         }}
+                        data-testid={`tab-${tab}`}
                       >
                         {tab}
                       </div>

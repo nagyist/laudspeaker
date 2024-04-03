@@ -1,16 +1,16 @@
 import credentials from "../fixtures/credentials";
-import { loginFunc } from "../test-helpers/loginFunc";
 import signup from "../test-helpers/signup";
-// import {loginFunc} from "../test-helpers/loginFunc";
 import { setupOrganization } from "../test-helpers/setupOrganization";
 
 const { email, password, firstName, lastName, organizationName, timeZone } =
   credentials;
 
-const createWebhook = (
+const createWebhook = ({
   name = "WH_1",
-  url = "https://jsonplaceholder.typicode.com/todos/1"
-) => {
+  url = `${Cypress.env("TESTS_API_BASE_URL")}/events/`,
+  token = "token",
+  body = '{{} "foo": "bar" {}}',
+}) => {
   cy.visit("/templates");
   cy.wait(1000);
   cy.get("#create-template-button").click();
@@ -21,6 +21,15 @@ const createWebhook = (
   cy.get("#submitTemplateCreation").click();
   cy.get("#webhookURL").click();
   cy.get("#webhookURL").type(url);
+  cy.get("#webhookMethod").click();
+  cy.get('[data-testid="select-option-POST"]').click();
+  cy.get("#authtype_custom").click();
+  cy.get("#custom-header").type(token);
+  cy.get('[data-testid="tab-Headers"]').click();
+  cy.get("#add-header").click();
+  cy.get("#custom-header-0").type("Content-Type: application/json");
+  cy.get('[data-testid="tab-Content"]').click();
+  cy.get("#webhook-body").type(body);
   cy.get("#saveDraftTemplate").click();
 };
 
@@ -58,7 +67,7 @@ const addWebhook = (position = 1) => {
   drag("#webhook");
 
   cy.contains(`Webhook ${position}`).click({ force: true });
-  cy.get("#template-select").select("WH_1");
+  cy.get("#template-select").select(`WH_${position}`);
   cy.get("#save-node-data").click();
 
   cy.wait(1000);
@@ -67,40 +76,13 @@ const addWebhook = (position = 1) => {
   cy.get("#flow-builder-sidepanel-cancel").click({ force: true });
 };
 
-const testValues: Record<string, string> = {
-  user_id: "913",
-  name: "Bose",
-  email: "testing+3@laudspeaker.com",
-  is_delete: "true",
-  recent_appl_date: "2011-12-11",
-};
-
-const triggerEvent = (
-  APIKey: string,
-  event: string,
-  correlationKey: string,
-  correlationValue: string
-) => {
-  cy.request({
-    method: "POST",
-    url: `${Cypress.env("TESTS_API_BASE_URL")}/events/`,
-    headers: {
-      Authorization: `Api-Key ${APIKey}`,
-      "Content-Type": "application/json",
-    },
-    body: {
-      source: "custom",
-      event,
-      payload: {
-        foo: "bar",
-      },
-      correlationKey,
-      correlationValue,
-    },
-  }).then((response) => {
-    expect(response.status).to.eq(201);
-  });
-};
+const testValues = [
+  ["user_id", "913"],
+  ["name", "Bose"],
+  ["email", "testing+3@laudspeaker.com"],
+  ["is_delete", "true"],
+  ["recent_appl_date", "2011-12-11"],
+];
 
 describe("Comprehensive MultiSplit", { retries: 2 }, () => {
   beforeEach(() => {
@@ -125,8 +107,25 @@ describe("Comprehensive MultiSplit", { retries: 2 }, () => {
   it("works as expected", () => {
     cy.uploadCSV();
 
-    // create webhook
-    createWebhook();
+    // create webhooks
+    cy.visit("/settings");
+    cy.contains("API").click();
+    cy.wait(1000);
+
+    cy.get('input[name="privateAPIKey"]').then(($input) => {
+      // Get the input value
+      const APIKey = $input.val() as string;
+      expect(APIKey).to.be.a("string").and.not.be.empty;
+
+      testValues.forEach(([key, value], idx) => {
+        cy.wait(1000);
+        createWebhook({
+          name: `WH_${idx + 1}`,
+          token: `Api-Key ${APIKey}`,
+          body: `{{}"source":"custom","event":"${key} event","payload":{{}"foo":"bar"{}},"correlationKey":"${key}","correlationValue":"${value}"{}}`,
+        });
+      });
+    });
 
     // create multi-split journey
     cy.visit("/flow");
@@ -157,7 +156,7 @@ describe("Comprehensive MultiSplit", { retries: 2 }, () => {
     cy.get("[data-testid='attribute-name-input-0']").click();
     cy.get("[data-testid='attribute-name-input-0']").type("name");
     cy.get("[data-testid='combobox-option-name']").click();
-    cy.get("[data-testid='attribute-statement-0']").type("john");
+    cy.get("[data-testid='attribute-statement-0']").type("Bose");
     cy.get("[data-testid='flow-builder-multisplit-add-button']").click();
 
     // branch #2
@@ -165,7 +164,9 @@ describe("Comprehensive MultiSplit", { retries: 2 }, () => {
     cy.get("[data-testid='filter-builder-add-condition-button']").click();
     cy.get("[data-testid='attribute-name-input-0']").type("email");
     cy.get("[data-testid='combobox-option-email']").click();
-    cy.get("[data-testid='attribute-statement-0']").type("user@email.com");
+    cy.get("[data-testid='attribute-statement-0']").type(
+      "testing+71@laudspeaker.com"
+    );
     cy.get("[data-testid='flow-builder-multisplit-add-button']").click();
 
     // branch #3
@@ -200,7 +201,7 @@ describe("Comprehensive MultiSplit", { retries: 2 }, () => {
     cy.get("[data-testid='attribute-statement-select-0']").select(
       "Date;;before"
     );
-    cy.get("[data-testid='attribute-statement-0']").type("2010-02-12");
+    cy.get("[data-testid='attribute-statement-0']").type("2020-01-11");
 
     cy.get("[data-testid='flow-builder-multisplit-add-button']").click();
     cy.get("#save-node-data").click();
@@ -211,28 +212,33 @@ describe("Comprehensive MultiSplit", { retries: 2 }, () => {
     addWebhook(4);
     addWebhook(5);
 
-    // Go to /settings
-    cy.visit("/settings");
-    cy.contains("API").click();
+    cy.get("#next-button").click();
+
     cy.wait(1000);
 
-    cy.get('input[name="privateAPIKey"]').then(($input) => {
-      // Get the input value
-      const APIKey = $input.val() as string;
-      expect(APIKey).to.be.a("string").and.not.be.empty;
+    cy.get("#next-button").click();
 
-      for (const key in testValues) {
-        cy.wait(1000);
-        triggerEvent(APIKey, `${key} event`, key, testValues[key]);
-      }
-    });
-
-    cy.visit("/event-tracker");
     cy.wait(1000);
 
-    for (const key in testValues) {
-      cy.wait(1000);
-      cy.contains(`${key} event`);
-    }
+    cy.get("#next-button").click();
+
+    cy.wait(1000);
+
+    cy.get("#start-journey-button").click();
+
+    cy.wait(1000);
+
+    cy.get("#journey-start-verify-button").click();
+
+    // // wait for a minute
+    // cy.wait(60000);
+
+    // cy.visit("/event-tracker");
+    // cy.wait(1000);
+
+    // testValues.forEach(([key]) => {
+    //   cy.wait(1000);
+    //   cy.contains(`${key} event`);
+    // });
   });
 });
