@@ -2071,7 +2071,6 @@ export class CustomersService {
         query.statements.map(async (statement) => {
           return await this.getSegmentCustomersFromSubQuery(
             statement,
-            account,
             workspace,
             session,
             count++,
@@ -2215,7 +2214,6 @@ export class CustomersService {
         query.statements.map(async (statement) => {
           return await this.getSegmentCustomersFromSubQuery(
             statement,
-            account,
             workspace,
             session,
             count++,
@@ -2341,7 +2339,6 @@ export class CustomersService {
           //console.log("collectionName is", collectionName);
           return await this.getSegmentCustomersFromSubQuery(
             statement,
-            account,
             workspace,
             session,
             count++,
@@ -2495,7 +2492,6 @@ export class CustomersService {
   //to do create intermediate collection
   async getSegmentCustomersFromQuery(
     query: any,
-    account: Account,
     workspace: Workspaces,
     session: string,
     topLevel: boolean,
@@ -2512,7 +2508,7 @@ export class CustomersService {
       `top level query is: ${JSON.stringify(query, null, 2)}`,
       this.getSegmentCustomersFromQuery.name,
       session,
-      account.id
+      workspace.id
     );
 
     //create collectionName
@@ -2537,7 +2533,6 @@ export class CustomersService {
         query.statements.map(async (statement) => {
           return await this.getSegmentCustomersFromSubQuery(
             statement,
-            account,
             workspace,
             session,
             count++,
@@ -2549,19 +2544,19 @@ export class CustomersService {
         `the sets are: ${sets}`,
         this.getSegmentCustomersFromQuery.name,
         session,
-        account.id
+        workspace.id
       );
       this.debug(
         `about to reduce the sets`,
         this.getSegmentCustomersFromQuery.name,
         session,
-        account.id
+        workspace.id
       );
       this.debug(
         `the sets length: ${sets.length}`,
         this.getSegmentCustomersFromQuery.name,
         session,
-        account.id
+        workspace.id
       );
       const unionAggregation: any[] = [];
       //if (sets.length > 1) {
@@ -2601,7 +2596,7 @@ export class CustomersService {
               `trying to release collection`,
               this.getSegmentCustomersFromQuery.name,
               session,
-              account.id
+              workspace.id
             );
             //toggle for testing segments
             await this.connection.db.collection(collection).drop();
@@ -2609,14 +2604,14 @@ export class CustomersService {
               `dropped successfully`,
               this.getSegmentCustomersFromQuery.name,
               session,
-              account.id
+              workspace.id
             );
           } catch (e) {
             this.debug(
               `error dropping collection: ${e}`,
               this.getSegmentCustomersFromQuery.name,
               session,
-              account.id
+              workspace.id
             );
           }
         });
@@ -2633,7 +2628,6 @@ export class CustomersService {
           //console.log("collectionName is", collectionName);
           return await this.getSegmentCustomersFromSubQuery(
             statement,
-            account,
             workspace,
             session,
             count++,
@@ -2653,19 +2647,19 @@ export class CustomersService {
         `the sets are: ${sets}`,
         this.getSegmentCustomersFromQuery.name,
         session,
-        account.id
+        workspace.id
       );
       this.debug(
         `about to union the sets`,
         this.getSegmentCustomersFromQuery.name,
         session,
-        account.id
+        workspace.id
       );
       this.debug(
         `the sets length: ${sets.length}`,
         this.getSegmentCustomersFromQuery.name,
         session,
-        account.id
+        workspace.id
       );
 
       // Add each additional collection to the pipeline
@@ -2695,7 +2689,7 @@ export class CustomersService {
               `trying to release collection`,
               this.getSegmentCustomersFromQuery.name,
               session,
-              account.id
+              workspace.id
             );
             //toggle for testing segments
             await this.connection.db.collection(collection).drop();
@@ -2703,14 +2697,14 @@ export class CustomersService {
               `dropped successfully`,
               this.getSegmentCustomersFromQuery.name,
               session,
-              account.id
+              workspace.id
             );
           } catch (e) {
             this.debug(
               `error dropping collection: ${e}`,
               this.getSegmentCustomersFromQuery.name,
               session,
-              account.id
+              workspace.id
             );
           }
         });
@@ -2730,7 +2724,6 @@ export class CustomersService {
    */
   async getSegmentCustomersFromSubQuery(
     statement: any,
-    account: Account,
     workspace: Workspaces,
     session: string,
     count: number,
@@ -2742,11 +2735,10 @@ export class CustomersService {
         `recursive subquery call`,
         this.getSegmentCustomersFromSubQuery.name,
         session,
-        account.id
+        workspace.id
       );
       return this.getSegmentCustomersFromQuery(
         statement,
-        account,
         workspace,
         session,
         false,
@@ -2758,11 +2750,10 @@ export class CustomersService {
         `singleStatement call`,
         this.getSegmentCustomersFromSubQuery.name,
         session,
-        account.id
+        workspace.id
       );
       return await this.getCustomersFromStatement(
         statement,
-        account,
         workspace,
         session,
         count,
@@ -2781,7 +2772,6 @@ export class CustomersService {
    */
   async getCustomersFromStatement(
     statement: any,
-    account: Account,
     workspace: Workspaces,
     session: string,
     count: number,
@@ -2800,27 +2790,27 @@ export class CustomersService {
       'In getCustomersFromStatement deciding which sub evaluate statement to go to next/n\n',
       this.getCustomersFromStatement.name,
       session,
-      account.email
+      workspace.id
     );
     this.debug(
       `the key is: ${JSON.stringify(key, null, 2)}`,
       this.getCustomersFromStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.debug(
       `the type is: ${JSON.stringify(type, null, 2)}`,
       this.getCustomersFromStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.debug(
       `the value is: ${JSON.stringify(value, null, 2)}`,
       this.getCustomersFromStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.debug(
@@ -2831,14 +2821,13 @@ export class CustomersService {
       )}`,
       this.getCustomersFromStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     switch (type) {
       case 'Attribute':
         return this.customersFromAttributeStatement(
           statement,
-          account,
           workspace,
           session,
           count,
@@ -2848,7 +2837,6 @@ export class CustomersService {
       case 'Event':
         return await this.customersFromEventStatement(
           statement,
-          account,
           workspace,
           session,
           count,
@@ -2857,7 +2845,6 @@ export class CustomersService {
       case 'Email':
         return this.customersFromMessageStatement(
           statement,
-          account,
           workspace,
           'Email',
           session,
@@ -2867,7 +2854,6 @@ export class CustomersService {
       case 'Push':
         return this.customersFromMessageStatement(
           statement,
-          account,
           workspace,
           'Push',
           session,
@@ -2877,7 +2863,6 @@ export class CustomersService {
       case 'SMS':
         return this.customersFromMessageStatement(
           statement,
-          account,
           workspace,
           'SMS',
           session,
@@ -2887,7 +2872,6 @@ export class CustomersService {
       case 'In-app message':
         return this.customersFromMessageStatement(
           statement,
-          account,
           workspace,
           'In-app message',
           session,
@@ -2897,9 +2881,6 @@ export class CustomersService {
       case 'Segment':
         return this.customersFromSegmentStatement(
           statement,
-          account,
-          session,
-          count,
           intermediateCollection
         );
         break;
@@ -2921,16 +2902,11 @@ export class CustomersService {
 
   async customersFromSegmentStatement(
     statement: any,
-    account: Account,
-    session: string,
-    count: number,
     intermediateCollection: string
   ) {
     const { type, segmentId } = statement;
     const collectionOfCustomersFromSegment =
       await this.segmentsService.getSegmentCustomers(
-        account,
-        session,
         segmentId,
         intermediateCollection
       );
@@ -2948,7 +2924,7 @@ export class CustomersService {
 
   //to do check with actual messages in clickhouse
   async getJourneysWithTag(
-    account: Account,
+    workspace: Workspaces,
     session: string,
     tag: string
   ): Promise<string[]> {
@@ -2960,7 +2936,9 @@ export class CustomersService {
       const journeys = await queryRunner.manager
         .createQueryBuilder(Journey, 'journey')
         //.where('journey.ownerId = :ownerId', { owner: { id: account.id } })
-        .where('journey.ownerId = :ownerId', { ownerId: account.id })
+        .where('journey.workspaceId = :workspaceId', {
+          workspaceId: workspace.id,
+        })
         //.where('journey.ownerId = "930fd606-2be2-4429-80a0-94fd3607dc66"')
         //.where('ownerId = :ownerId', { owner: { id: account.id } })
         .andWhere("journey.journeySettings -> 'tags' ? :tag", { tag })
@@ -2996,14 +2974,12 @@ export class CustomersService {
    * @returns
    */
 
-  async getJourneys(account: Account, session: string) {
+  async getJourneys(workspace: Workspaces, session: string) {
     console.log('In getJourneys');
 
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-
-    const workspace = account?.currentWorkspace;
 
     try {
       const journeys = await queryRunner.manager.find(Journey, {
@@ -3099,33 +3075,31 @@ export class CustomersService {
 
   async customersFromMessageStatement(
     statement: any,
-    account: Account,
     workspace: Workspaces,
     typeOfMessage: string,
     session: string,
     count: number,
     intermediateCollection: string
   ) {
-    const userId = (<Account>account).id;
     this.debug(
       'In get customers from message statement',
       this.customersFromMessageStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.debug(
       `the type of message is: ${typeOfMessage}`,
       this.customersFromMessageStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.debug(
-      `account id is: ${userId}`,
+      `workspace id is: ${workspace.id}`,
       this.customersFromMessageStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     const {
@@ -3148,11 +3122,11 @@ export class CustomersService {
     if (from.key === 'ANY') {
       // Get all journeys associated with the account
       console.log('ji any');
-      journeyIds = await this.getJourneys(account, session);
+      journeyIds = await this.getJourneys(workspace, session);
     } else if (from.key === 'WITH_TAG') {
       // Get all journeys with the specific tag
       console.log('ji with tag');
-      journeyIds = await this.getJourneysWithTag(account, session, tag);
+      journeyIds = await this.getJourneysWithTag(workspace, session, tag);
     }
 
     console.log('THe journey ids are', journeyIds);
@@ -3164,7 +3138,6 @@ export class CustomersService {
     const stepIds = [];
     for (const journeyId of journeyIds) {
       const steps = await this.stepsService.transactionalfindAllByTypeInJourney(
-        account,
         workspace,
         StepType.MESSAGE,
         journeyId,
@@ -3176,7 +3149,6 @@ export class CustomersService {
 
     console.log('step ids are,', JSON.stringify(stepIds, null, 2));
 
-    const userIdCondition = `userId = '${userId}'`;
     let sqlQuery = `SELECT customerId FROM message_status WHERE `;
 
     if (
@@ -3260,7 +3232,7 @@ export class CustomersService {
         `the final SQL query is:\n${sqlQuery}`,
         this.customersFromMessageStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       const countEvents = await this.clickhouseClient.query({
@@ -3272,7 +3244,7 @@ export class CustomersService {
         `creating collection`,
         this.customersFromMessageStatement.name,
         session,
-        account.id
+        workspace.id
       );
       const collectionHandle = this.connection.db.collection(
         intermediateCollection
@@ -3355,7 +3327,7 @@ export class CustomersService {
             'Completed!',
             this.customersFromMessageStatement.name,
             session,
-            account.id
+            workspace.id
           );
 
           //console.log("intermediate collection is", intermediateCollection );
@@ -3391,7 +3363,7 @@ export class CustomersService {
   correctValueType(
     valueType: string,
     value: any,
-    account: Account,
+    workspace: Workspaces,
     session: string
   ) {
     switch (valueType) {
@@ -3419,7 +3391,7 @@ export class CustomersService {
             'Error parsing object\n',
             this.correctValueType.name,
             session,
-            account.id
+            workspace.id
           );
           return null;
         }
@@ -3428,7 +3400,7 @@ export class CustomersService {
           'unrecognised value type\n',
           this.correctValueType.name,
           session,
-          account.id
+          workspace.id
         );
         return value;
     }
@@ -3471,7 +3443,6 @@ export class CustomersService {
    */
   async customersFromAttributeStatement(
     statement: any,
-    account: Account,
     workspace: Workspaces,
     session: string,
     count: number,
@@ -3482,7 +3453,7 @@ export class CustomersService {
       'generating attribute mongo query\n',
       this.customersFromAttributeStatement.name,
       session,
-      account.id
+      workspace.id
     );
     const {
       key,
@@ -3501,39 +3472,44 @@ export class CustomersService {
       `key is: ${key}`,
       this.customersFromAttributeStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.debug(
       `comparison type is: ${comparisonType}`,
       this.customersFromAttributeStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.debug(
       `value is: ${value}`,
       this.customersFromAttributeStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.debug(
       `value type is: ${typeof value}`,
       this.customersFromAttributeStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     switch (comparisonType) {
       case 'is equal to':
         //checked
-        query[key] = this.correctValueType(valueType, value, account, session);
+        query[key] = this.correctValueType(
+          valueType,
+          value,
+          workspace,
+          session
+        );
         break;
       case 'is not equal to':
         //checked
         query[key] = {
-          $ne: this.correctValueType(valueType, value, account, session),
+          $ne: this.correctValueType(valueType, value, workspace, session),
         };
         break;
       case 'contains':
@@ -3554,12 +3530,12 @@ export class CustomersService {
         break;
       case 'is greater than':
         query[key] = {
-          $gt: this.correctValueType(valueType, value, account, session),
+          $gt: this.correctValueType(valueType, value, workspace, session),
         };
         break;
       case 'is less than':
         query[key] = {
-          $lt: this.correctValueType(valueType, value, account, session),
+          $lt: this.correctValueType(valueType, value, workspace, session),
         };
         break;
       // nested object
@@ -3659,28 +3635,28 @@ export class CustomersService {
       ` generated attribute query is: ${JSON.stringify(query, null, 2)}`,
       this.customersFromAttributeStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.debug(
       'now grabbing customers with the query',
       this.customersFromAttributeStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.debug(
       'in the aggregate construction - attribute',
       this.customersFromAttributeStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.debug(
       `creating collection`,
       this.customersFromAttributeStatement.name,
       session,
-      account.id
+      workspace.id
     );
 
     this.connection.db.collection(intermediateCollection);
@@ -3703,7 +3679,7 @@ export class CustomersService {
       `Here are the docs: ${JSON.stringify(docs, null, 2)}`,
       this.customersFromAttributeStatement.name,
       session,
-      account.id
+      workspace.id
     );
     return intermediateCollection;
     /*
@@ -3729,9 +3705,7 @@ export class CustomersService {
    *
    * @returns string
    */
-  async getPrimaryKey(account: Account, session: string): Promise<string> {
-    const workspace = account?.currentWorkspace;
-
+  async getPrimaryKey(workspace: Workspaces, session: string): Promise<string> {
     const customerKeyDocument = await this.CustomerKeysModel.findOne({
       workspaceId: workspace.id,
       isPrimary: true,
@@ -3744,7 +3718,7 @@ export class CustomersService {
         `current pk is: ${currentPK}`,
         this.getPrimaryKey.name,
         session,
-        account.id
+        workspace.id
       );
       return currentPK;
     } else {
@@ -3753,7 +3727,7 @@ export class CustomersService {
         `pk isnt working so set as email`,
         this.getPrimaryKey.name,
         session,
-        account.id
+        workspace.id
       );
       //to do just for testing
       //currentPK = 'email';
@@ -3794,7 +3768,6 @@ export class CustomersService {
    */
   async customersFromEventStatement(
     statement: any,
-    account: Account,
     workspace: Workspaces,
     session: string,
     count: number,
@@ -3942,7 +3915,7 @@ export class CustomersService {
         'in the aggregate construction - has performed',
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       //first we make the aggregation call with non-mobile events
@@ -3954,7 +3927,7 @@ export class CustomersService {
           $lookup: {
             from: 'customers',
             localField: 'correlationValue',
-            foreignField: await this.getPrimaryKey(account, session),
+            foreignField: await this.getPrimaryKey(workspace, session),
             as: 'matchedCustomers',
           },
         },
@@ -3982,14 +3955,14 @@ export class CustomersService {
         'aggregate query is/n\n',
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       this.debug(
         JSON.stringify(aggregationPipeline, null, 2),
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       //fetch users here
@@ -4062,14 +4035,14 @@ export class CustomersService {
         'aggregate mobile query is/n\n',
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       this.debug(
         JSON.stringify(aggregationPipelineMobile, null, 2),
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       //fetch users here
@@ -4112,14 +4085,14 @@ export class CustomersService {
         'aggregate mobile other ids query is/n\n',
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       this.debug(
         JSON.stringify(aggregationPipelineMobileOtherIds, null, 2),
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       //fetch users here
@@ -4142,7 +4115,7 @@ export class CustomersService {
         'in the aggregate construction - has not performed',
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       //first check
@@ -4164,13 +4137,13 @@ export class CustomersService {
         'the check is',
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
       this.debug(
         JSON.stringify(check, null, 2),
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       if (check.length < 1) {
@@ -4178,7 +4151,7 @@ export class CustomersService {
           'no events of this name',
           this.customersFromEventStatement.name,
           session,
-          account.id
+          workspace.id
         ); //the event does not exist, so we should return all customers
         const allUsers = [
           {
@@ -4214,7 +4187,7 @@ export class CustomersService {
         'event exists',
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       /*
@@ -4223,7 +4196,7 @@ export class CustomersService {
        *
        */
 
-      const primaryKey = await this.getPrimaryKey(account, session); // Ensure this is done outside the pipeline
+      const primaryKey = await this.getPrimaryKey(workspace, session); // Ensure this is done outside the pipeline
 
       const pipeline1 = [
         { $match: mongoQuery },
@@ -4287,14 +4260,14 @@ export class CustomersService {
         'about to run pipeline 2/n\n',
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       this.debug(
         JSON.stringify(pipeline2, null, 2),
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       const result2 = await this.eventsService.getCustomersbyEventsMongo(
@@ -4359,14 +4332,14 @@ export class CustomersService {
         'about to run pipeline 3/n\n',
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       this.debug(
         JSON.stringify(pipeline3, null, 2),
         this.customersFromEventStatement.name,
         session,
-        account.id
+        workspace.id
       );
 
       const result3 = await this.CustomerModel.aggregate(pipeline3).exec();
@@ -4685,6 +4658,7 @@ export class CustomersService {
     switch (type) {
       case 'Attribute':
         return this.evaluateAttributeStatement(
+          workspace,
           customer,
           statement,
           account,
@@ -5056,6 +5030,7 @@ export class CustomersService {
   }
 
   evaluateAttributeStatement(
+    workspace: Workspaces,
     customer: CustomerDocument,
     statement: any,
     account: Account,
@@ -5143,12 +5118,12 @@ export class CustomersService {
         //not checked
         return (
           customerValue ===
-          this.correctValueType(valueType, value, account, session)
+          this.correctValueType(valueType, value, workspace, session)
         ); //value;
       case 'is not equal to':
         return (
           customerValue !==
-          this.correctValueType(valueType, value, account, session)
+          this.correctValueType(valueType, value, workspace, session)
         ); //value;
       case 'contains':
         if (Array.isArray(customerValue)) {
@@ -5175,7 +5150,7 @@ export class CustomersService {
         if (typeof customerValue === 'number' && !isNaN(+value)) {
           return (
             customerValue >
-            this.correctValueType(valueType, value, account, session)
+            this.correctValueType(valueType, value, workspace, session)
           ); //value;;
         }
         return false;
@@ -5184,7 +5159,7 @@ export class CustomersService {
         if (typeof customerValue === 'number' && !isNaN(+value)) {
           return (
             customerValue <
-            this.correctValueType(valueType, value, account, session)
+            this.correctValueType(valueType, value, workspace, session)
           ); //value;;
         }
         return false;

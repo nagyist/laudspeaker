@@ -1,7 +1,7 @@
 import { Inject, Injectable, LoggerService } from '@nestjs/common';
-import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { InjectModel } from '@nestjs/mongoose';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import mongoose, { Model } from 'mongoose';
+import { Model } from 'mongoose';
 import {
   Customer,
   CustomerDocument,
@@ -25,32 +25,15 @@ import {
   IntegrationStatus,
 } from './api/integrations/entities/integration.entity';
 import { Recovery } from './api/auth/entities/recovery.entity';
-import { WebhookJobsService } from './api/webhook-jobs/webhook-jobs.service';
-import {
-  WebhookJobStatus,
-  WebhookProvider,
-} from './api/webhook-jobs/entities/webhook-job.entity';
 import { AccountsService } from './api/accounts/accounts.service';
-import Mailgun from 'mailgun.js';
-import formData from 'form-data';
 import { createClient } from '@clickhouse/client';
-import {
-  ClickHouseEventProvider,
-  ClickHouseMessage,
-} from './api/webhooks/webhooks.service';
-import twilio from 'twilio';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
-import client from '@sendgrid/client';
-import { ModalsService } from './api/modals/modals.service';
 import { randomUUID } from 'crypto';
 import { StepsService } from './api/steps/steps.service';
 import { StepType } from './api/steps/types/step.interface';
 import { InjectQueue } from '@nestjs/bullmq';
-import { Job, Queue } from 'bullmq';
+import { Queue } from 'bullmq';
 import { JourneysService } from './api/journeys/journeys.service';
-import { RedlockService } from './api/redlock/redlock.service';
-import { Lock } from 'redlock';
-import * as _ from 'lodash';
 import { JourneyLocationsService } from './api/journeys/journey-locations.service';
 import { Journey } from './api/journeys/entities/journey.entity';
 import {
@@ -59,12 +42,11 @@ import {
   RecurrenceEndsOptions,
 } from './api/journeys/types/additional-journey-settings.interface';
 import { OrganizationInvites } from './api/organizations/entities/organization-invites.entity';
-import { JourneyLocation } from './api/journeys/entities/journey-location.entity';
-import { Requeue } from './api/steps/entities/requeue.entity';
 import { KEYS_TO_SKIP } from './utils/customer-key-name-validator';
 import { SegmentsService } from './api/segments/segments.service';
 import { CustomersService } from './api/customers/customers.service';
 import { Temporal } from '@js-temporal/polyfill';
+import { WorkspacesService } from './api/workspaces/workspaces.service';
 
 const BATCH_SIZE = 500;
 
@@ -112,17 +94,14 @@ export class CronService {
     @Inject(CustomersService) private customersService: CustomersService,
     @Inject(IntegrationsService)
     private integrationsService: IntegrationsService,
-    @Inject(WebhookJobsService) private webhookJobsService: WebhookJobsService,
     @Inject(AccountsService) private accountsService: AccountsService,
-    @Inject(ModalsService) private modalsService: ModalsService,
+    @Inject(WorkspacesService)
+    private workspacesService: WorkspacesService,
     @Inject(StepsService) private stepsService: StepsService,
     @Inject(JourneyLocationsService)
     private journeyLocationsService: JourneyLocationsService,
     @InjectQueue('transition') private readonly transitionQueue: Queue,
-    @InjectQueue('start') private readonly startQueue: Queue,
-    @Inject(RedlockService)
-    private readonly redlockService: RedlockService,
-    @InjectConnection() private readonly connection: mongoose.Connection
+    @InjectQueue('start') private readonly startQueue: Queue
   ) {}
 
   log(message, method, session, user = 'ANONYMOUS') {
@@ -750,11 +729,7 @@ export class CronService {
    *
    */
 
-  checkSegmentHasMessageFilters(
-    segmentCriteria: any,
-    orgId: string,
-    session: string
-  ): boolean {
+  checkSegmentHasMessageFilters(segmentCriteria: any): boolean {
     // Convert the segmentCriteria object to a JSON string
     const criteriaString = JSON.stringify(segmentCriteria);
 
@@ -781,11 +756,10 @@ export class CronService {
   async updateStatementsWithMessageEvents() {
     const session = randomUUID();
     let err;
-    //console.log("about to run updateStatementsWithMessageEvents");
-    // for each organization, get all segments
-    // to do change this to organisations rather than
-    const accounts = await this.accountsService.findAll();
-    for (let j = 0; j < accounts.length; j++) {
+
+    const workspaces = await this.workspacesService.workspacesRepository.find();
+
+    for (const workspace of workspaces) {
       const queryRunner = this.dataSource.createQueryRunner();
       await queryRunner.connect();
       await queryRunner.startTransaction();
@@ -794,8 +768,7 @@ export class CronService {
       let segmentError: string;
       try {
         const segments = await this.segmentsService.getSegments(
-          accounts[j],
-          accounts[j].currentWorkspace,
+          workspace,
           undefined,
           queryRunner
         );
@@ -806,15 +779,13 @@ export class CronService {
           }
 
           const doInclude = this.checkSegmentHasMessageFilters(
-            segment.inclusionCriteria.query,
-            accounts[j].id,
-            session
+            segment.inclusionCriteria.query
           );
           this.debug(
             `we updated doInclude: ${doInclude}`,
             this.updateStatementsWithMessageEvents.name,
             session,
-            accounts[j].id
+            workspace.id
           );
           if (doInclude) {
             // If segment includes message filters recalculate which customers should be in the segment
@@ -825,20 +796,19 @@ export class CronService {
               `segment is: ${segment}`,
               this.updateStatementsWithMessageEvents.name,
               session,
-              accounts[j].id
+              workspace.id
             );
             this.debug(
               `chron prefix for segment is: ${collectionPrefix}`,
               this.updateStatementsWithMessageEvents.name,
               session,
-              accounts[j].id
+              workspace.id
             );
             segmentPrefixes.push(collectionPrefix);
             const customersInSegment =
               await this.customersService.getSegmentCustomersFromQuery(
                 segment.inclusionCriteria.query,
-                accounts[j],
-                accounts[j].currentWorkspace,
+                workspace,
                 session,
                 true,
                 0,
@@ -849,15 +819,14 @@ export class CronService {
               `we have customersInSegment: ${customersInSegment}`,
               this.updateStatementsWithMessageEvents.name,
               session,
-              accounts[j].id
+              workspace.id
             );
             // update the segment customer table
             //try {
             //collectionName: string,account: Account,segmentId: string,session: string,queryRunner: QueryRunner,batchSize: number = 500 //
             await this.segmentsService.updateSegmentCustomersBatched(
               customersInSegment,
-              accounts[j],
-              accounts[j].currentWorkspace,
+              workspace,
               segment.id,
               session,
               queryRunner,
@@ -875,13 +844,13 @@ export class CronService {
           `error updating segment: ${segmentError}`,
           this.updateStatementsWithMessageEvents.name,
           session,
-          accounts[j].id
+          workspace.id
         );
         this.error(
           error,
           this.updateStatementsWithMessageEvents.name,
           session,
-          accounts[j].id
+          workspace.id
         );
         //drop extraneous collections in case of error
         for (const prefix of segmentPrefixes) {

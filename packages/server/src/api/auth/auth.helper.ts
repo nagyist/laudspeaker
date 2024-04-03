@@ -194,7 +194,6 @@ export class AuthHelper extends BaseJwtHelper {
 
     const startstep =
       await this.stepsService.transactionalfindAllByTypeInJourney(
-        account,
         workspace,
         StepType.START,
         journey.id,
@@ -1050,7 +1049,6 @@ export class AuthHelper extends BaseJwtHelper {
 
     const startstep =
       await this.stepsService.transactionalfindAllByTypeInJourney(
-        account,
         workspace,
         StepType.START,
         journey.id,
@@ -1263,7 +1261,6 @@ export class AuthHelper extends BaseJwtHelper {
     );
     const startstep =
       await this.stepsService.transactionalfindAllByTypeInJourney(
-        account,
         workspace,
         StepType.START,
         journey.id,
@@ -1364,7 +1361,6 @@ export class AuthHelper extends BaseJwtHelper {
     );
     const startstep =
       await this.stepsService.transactionalfindAllByTypeInJourney(
-        account,
         workspace,
         StepType.START,
         journey.id,
@@ -1501,7 +1497,6 @@ export class AuthHelper extends BaseJwtHelper {
     );
     const startstep =
       await this.stepsService.transactionalfindAllByTypeInJourney(
-        account,
         workspace,
         StepType.START,
         journey.id,

@@ -273,7 +273,6 @@ export class StepsService {
    * @returns
    */
   async transactionalfindAllByTypeInJourney(
-    account: Account,
     workspace: Workspaces,
     type: StepType,
     journeyID: string,
@@ -282,13 +281,13 @@ export class StepsService {
   ): Promise<Step[]> {
     try {
       return await queryRunner.manager.findBy(Step, {
-        workspace: account && workspace ? { id: workspace.id } : undefined,
+        workspace: workspace ? { id: workspace.id } : undefined,
 
         journey: { id: journeyID },
         type: type,
       });
     } catch (e) {
-      this.error(e, this.findAllByType.name, session, account.id);
+      this.error(e, this.findAllByType.name, session, workspace.id);
       throw e;
     }
   }

@@ -206,7 +206,6 @@ export class SegmentsService {
    * @returns
    */
   public async getSegments(
-    account: Account,
     workspace: Workspaces,
     type: SegmentType | undefined,
     queryRunner: QueryRunner
@@ -224,12 +223,7 @@ export class SegmentsService {
    * Helper function for customers.service getCusotmersFromsegment()
    */
   //to do add account filter on records, later
-  async getSegmentCustomers(
-    account: Account,
-    session: string,
-    segmentId: string,
-    collectionName: string
-  ) {
+  async getSegmentCustomers(segmentId: string, collectionName: string) {
     const records = await this.segmentCustomersRepository.findBy({
       segment: segmentId,
     });
@@ -462,7 +456,6 @@ export class SegmentsService {
         const customersInSegment =
           await this.customersService.getSegmentCustomersFromQuery(
             createSegmentDTO.inclusionCriteria.query,
-            account,
             workspace,
             session,
             true,
@@ -560,7 +553,6 @@ export class SegmentsService {
       const customersInSegment =
         await this.customersService.getSegmentCustomersFromQuery(
           createSegmentDTO.inclusionCriteria.query,
-          account,
           workspace,
           session,
           true,
@@ -590,7 +582,6 @@ export class SegmentsService {
       const customersInSegment =
         await this.customersService.getSegmentCustomersFromQuery(
           createSegmentDTO.inclusionCriteria.query,
-          account,
           workspace,
           session,
           true,
@@ -787,12 +778,7 @@ export class SegmentsService {
   ) {
     const addedToSegments: Segment[] = [];
     const removedFromSegments: Segment[] = [];
-    const segments = await this.getSegments(
-      account,
-      workspace,
-      undefined,
-      queryRunner
-    );
+    const segments = await this.getSegments(workspace, undefined, queryRunner);
 
     for (const segment of segments) {
       try {
@@ -1003,7 +989,6 @@ export class SegmentsService {
 
   public async updateSegmentCustomersBatched(
     collectionName: string,
-    account: Account,
     workspace: Workspaces,
     segmentId: string,
     session: string,

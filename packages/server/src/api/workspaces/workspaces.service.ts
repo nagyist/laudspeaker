@@ -19,7 +19,7 @@ export class WorkspacesService {
     private accountsService: AccountsService,
     private organizationService: OrganizationService,
     @InjectRepository(Workspaces)
-    private workspacesRepository: Repository<Workspaces>
+    public workspacesRepository: Repository<Workspaces>
   ) {}
 
   public async getAllWorkspaces(account: Account) {
