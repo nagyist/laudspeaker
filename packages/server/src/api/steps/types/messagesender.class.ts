@@ -14,6 +14,7 @@ import { WebClient } from '@slack/web-api';
 import { Account } from '@/api/accounts/entities/accounts.entity';
 import { Repository } from 'typeorm';
 import { Resend } from 'resend';
+import { randomUUID } from 'crypto';
 
 export enum MessageType {
   SMS = 'sms',
@@ -83,7 +84,8 @@ export class MessageSender {
         job.customerID,
         job.stepID,
         job.filteredTags,
-        job.accountID
+        job.accountID,
+        job.quietHours
       );
     },
     [MessageType.ANDROID]: async (job) => {
@@ -97,7 +99,8 @@ export class MessageSender {
         job.customerID,
         job.stepID,
         job.filteredTags,
-        job.accountID
+        job.accountID,
+        job.quietHours
       );
     },
     [MessageType.SLACK]: async (job) => {
@@ -297,7 +300,7 @@ export class MessageSender {
           'v:stepId': stepID,
           'v:customerId': customerID,
           'v:templateId': templateID,
-          'v:accountId': accountID,
+          'v:workspaceId': workspace.id,
         });
         msg = mailgunMessage;
         ret = [
@@ -454,7 +457,8 @@ export class MessageSender {
     customerID: string,
     stepID: string,
     filteredTags: any,
-    accountID: string
+    accountID: string,
+    quietHours: any
   ): Promise<ClickHouseMessage[]> {
     if (!iosDeviceToken) {
       return;
@@ -525,8 +529,19 @@ export class MessageSender {
 
     const messaging = admin.messaging(firebaseApp);
 
+    let data = {
+      stepID,
+      customerID,
+      messageID: randomUUID(),
+      templateID: templateID.toString(),
+      workspaceID: workspace.id,
+    };
+
+    if (quietHours) data['quietHours'] = JSON.stringify(quietHours);
+
     const messageId = await messaging.send({
       token: iosDeviceToken,
+      data,
       notification: {
         title: titleWithInsertedTags.slice(0, this.MAXIMUM_PUSH_TITLE_LENGTH),
         body: textWithInsertedTags.slice(0, this.MAXIMUM_PUSH_LENGTH),
@@ -550,6 +565,7 @@ export class MessageSender {
         },
       },
     });
+
     ret = [
       {
         stepId: stepID,
@@ -602,7 +618,8 @@ export class MessageSender {
     customerID: string,
     stepID: string,
     filteredTags: any,
-    accountID: string
+    accountID: string,
+    quietHours: any
   ): Promise<ClickHouseMessage[]> {
     if (!androidDeviceToken) {
       return;
@@ -671,22 +688,28 @@ export class MessageSender {
 
     const messaging = admin.messaging(firebaseApp);
 
+    let data = {
+      title: titleWithInsertedTags.slice(0, this.MAXIMUM_PUSH_TITLE_LENGTH),
+      body: textWithInsertedTags.slice(0, this.MAXIMUM_PUSH_LENGTH),
+      stepID,
+      customerID,
+      templateID: templateID.toString(),
+      workspaceID: workspace.id,
+      messageID: randomUUID(),
+      sound: 'default',
+    };
+
+    if (quietHours) data['quietHours'] = JSON.stringify(quietHours);
+
     const messageId = await messaging.send({
       token: androidDeviceToken,
-      notification: {
-        title: titleWithInsertedTags.slice(0, this.MAXIMUM_PUSH_TITLE_LENGTH),
-        body: textWithInsertedTags.slice(0, this.MAXIMUM_PUSH_LENGTH),
-      },
+      data: data,
       android: {
-        notification: {
-          sound: 'default',
-          clickAction: 'FLUTTER_NOTIFICATION_CLICK',
-        },
         priority: 'high',
       },
       apns: {
         headers: {
-          'apns-priority': '5', // Specify priority as needed
+          'apns-priority': '5',
         },
         payload: {
           aps: {
