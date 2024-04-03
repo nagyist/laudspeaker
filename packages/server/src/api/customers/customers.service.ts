@@ -69,7 +69,7 @@ import {
   validateKeyForMutations,
 } from '@/utils/customer-key-name-validator';
 import { UpsertCustomerDto } from './dto/upsert-customer.dto';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 import { Cache } from 'cache-manager';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { DeleteCustomerDto } from './dto/delete-customer.dto';
@@ -367,7 +367,7 @@ export class CustomersService {
     return ret;
   }
 
-  async addPhCustomers(data: any[], account: Account, workspace: Workspaces) {
+  async addPhCustomers(data: any[], account: Account, workspace: Workspace) {
     for (let index = 0; index < data.length; index++) {
       const addedBefore = await this.CustomerModel.find({
         workspaceId: workspace.id,
@@ -790,7 +790,7 @@ export class CustomersService {
   }
 
   async findById(
-    workspace: Workspaces,
+    workspace: Workspace,
     customerId: string,
     clientSession?: ClientSession
   ): Promise<
@@ -1055,7 +1055,7 @@ export class CustomersService {
    */
   async getAudienceSize(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     criteria: any,
     session: string,
     transactionSession?: ClientSession
@@ -1124,7 +1124,7 @@ export class CustomersService {
    */
   async findByCorrelationKVPair(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     correlationKey: string,
     correlationValue: string | string[],
     session: string,
@@ -1166,7 +1166,7 @@ export class CustomersService {
   }
 
   async findOrCreateByCorrelationKVPair(
-    workspace: Workspaces,
+    workspace: Workspace,
     dto: EventDto,
     transactionSession: ClientSession
   ): Promise<Correlation> {
@@ -1232,7 +1232,7 @@ export class CustomersService {
    */
 
   async upsert(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     upsertCustomerDto: UpsertCustomerDto,
     session: string
   ): Promise<{ id: string }> {
@@ -1288,7 +1288,7 @@ export class CustomersService {
    */
 
   async delete(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     deleteCustomerDto: DeleteCustomerDto,
     session: string
   ): Promise<{ primary_key: any }> {
@@ -1339,7 +1339,7 @@ export class CustomersService {
    */
 
   async read(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     readCustomerDto: ReadCustomerDto,
     session: string
   ): Promise<CustomerDocument> {
@@ -1858,7 +1858,7 @@ export class CustomersService {
 
   public async countCustomersInStep(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     stepId: string
   ) {
     const step = await this.stepsService.findOne(
@@ -1948,7 +1948,7 @@ export class CustomersService {
 
   public async isCustomerEnrolledInJourney(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     customer: CustomerDocument,
     journey: Journey,
     session: string,
@@ -2037,7 +2037,7 @@ export class CustomersService {
   async CountCustomersFromAndQuery(
     query: any,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string,
     topLevel: boolean,
     count: number,
@@ -2173,7 +2173,7 @@ export class CustomersService {
   async getCustomersFromQuery(
     query: any,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string,
     topLevel: boolean,
     count: number,
@@ -2492,7 +2492,7 @@ export class CustomersService {
   //to do create intermediate collection
   async getSegmentCustomersFromQuery(
     query: any,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string,
     topLevel: boolean,
     count: number,
@@ -2724,7 +2724,7 @@ export class CustomersService {
    */
   async getSegmentCustomersFromSubQuery(
     statement: any,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string,
     count: number,
     intermediateCollection: string
@@ -2772,7 +2772,7 @@ export class CustomersService {
    */
   async getCustomersFromStatement(
     statement: any,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string,
     count: number,
     intermediateCollection: string
@@ -2924,7 +2924,7 @@ export class CustomersService {
 
   //to do check with actual messages in clickhouse
   async getJourneysWithTag(
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string,
     tag: string
   ): Promise<string[]> {
@@ -2974,7 +2974,7 @@ export class CustomersService {
    * @returns
    */
 
-  async getJourneys(workspace: Workspaces, session: string) {
+  async getJourneys(workspace: Workspace, session: string) {
     console.log('In getJourneys');
 
     const queryRunner = this.dataSource.createQueryRunner();
@@ -3075,7 +3075,7 @@ export class CustomersService {
 
   async customersFromMessageStatement(
     statement: any,
-    workspace: Workspaces,
+    workspace: Workspace,
     typeOfMessage: string,
     session: string,
     count: number,
@@ -3363,7 +3363,7 @@ export class CustomersService {
   correctValueType(
     valueType: string,
     value: any,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string
   ) {
     switch (valueType) {
@@ -3443,7 +3443,7 @@ export class CustomersService {
    */
   async customersFromAttributeStatement(
     statement: any,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string,
     count: number,
     intermediateCollection: string
@@ -3705,7 +3705,7 @@ export class CustomersService {
    *
    * @returns string
    */
-  async getPrimaryKey(workspace: Workspaces, session: string): Promise<string> {
+  async getPrimaryKey(workspace: Workspace, session: string): Promise<string> {
     const customerKeyDocument = await this.CustomerKeysModel.findOne({
       workspaceId: workspace.id,
       isPrimary: true,
@@ -3768,7 +3768,7 @@ export class CustomersService {
    */
   async customersFromEventStatement(
     statement: any,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string,
     count: number,
     intermediateCollection: string
@@ -4497,7 +4497,7 @@ export class CustomersService {
   async checkCustomerMatchesQuery(
     query: any,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string,
     customer?: CustomerDocument,
     customerId?: string,
@@ -4606,7 +4606,7 @@ export class CustomersService {
     customer: CustomerDocument,
     statement: any,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string,
     options?: QueryOptions
   ): Promise<boolean> {
@@ -4643,7 +4643,7 @@ export class CustomersService {
     customer: CustomerDocument,
     statement: any,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string
   ): Promise<boolean> {
     const {
@@ -4765,7 +4765,7 @@ export class CustomersService {
     customer: CustomerDocument,
     statement: any,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     typeOfMessage: string,
     session: string
   ): Promise<boolean> {
@@ -4911,7 +4911,7 @@ export class CustomersService {
     customer: CustomerDocument,
     statement: any,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     session: string
   ): Promise<boolean> {
     const { eventName, comparisonType, value, time, additionalProperties } =
@@ -5030,7 +5030,7 @@ export class CustomersService {
   }
 
   evaluateAttributeStatement(
-    workspace: Workspaces,
+    workspace: Workspace,
     customer: CustomerDocument,
     statement: any,
     account: Account,
@@ -5239,9 +5239,15 @@ export class CustomersService {
 
     const deviceTokenConditions = {
       $or: [
-        { androidDeviceToken: { $exists: true, $ne: '' } },
-        { iosDeviceToken: { $exists: true, $ne: '' } },
+        { 'androidFCMTokens.0': { $exists: true } },
+        { 'iosFCMTokens.0': { $exists: true } },
       ],
+      /*
+      $or: [
+        { androidFCMTokens: { $exists: true, $size: { $gt: 0 } } },
+        { iosFCMTokens: { $exists: true, $size: { $gt: 0 } } },
+      ],
+      */
     };
 
     const pk = await this.CustomerKeysModel.findOne({
@@ -5254,20 +5260,23 @@ export class CustomersService {
 
       const searchConditions = {
         $or: [
-          ...(search ? [{ _id: search }] : []),
-          //...(isValidObjectId(search) ? [{ _id: search }] : []),
+          ...(isValidObjectId(search) ? [{ _id: search }] : []),
           { email: findRegexp },
           { phone: findRegexp },
           ...(pk ? [{ [pk.key]: findRegexp }] : []),
         ],
       };
-
+      //console.log("and--")
       query['$and'] = [deviceTokenConditions, searchConditions];
     } else {
+      //console.log("or--")
       query['$or'] = deviceTokenConditions['$or'];
     }
 
+    //console.log("query to execute is", JSON.stringify(query,null,2));
+
     const totalCustomers = await this.CustomerModel.count(query).exec();
+    //console.log("totalCustomers are", totalCustomers);
     const totalPages = Math.ceil(totalCustomers / take) || 1;
 
     const customers = await this.CustomerModel.find(query)
@@ -5983,7 +5992,7 @@ export class CustomersService {
   }
 
   async sendFCMToken(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     body: SendFCMDto,
     session: string
   ) {
@@ -6021,7 +6030,7 @@ export class CustomersService {
   }
 
   async identifyCustomer(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     body: IdentifyCustomerDTO,
     session: string
   ) {
@@ -6092,7 +6101,7 @@ export class CustomersService {
   }
 
   async setCustomerProperties(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     body: SetCustomerPropsDTO,
     session: string
   ) {

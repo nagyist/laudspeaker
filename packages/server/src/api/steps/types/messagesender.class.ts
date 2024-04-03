@@ -15,7 +15,7 @@ import { Account } from '@/api/accounts/entities/accounts.entity';
 import { Repository } from 'typeorm';
 import { Resend } from 'resend';
 import { randomUUID } from 'crypto';
-import { Workspaces } from '@/api/workspaces/entities/workspaces.entity';
+import { Workspace } from '@/api/workspaces/entities/workspace.entity';
 
 export enum MessageType {
   SMS = 'sms',
@@ -122,7 +122,7 @@ export class MessageSender {
     },
   };
 
-  constructor(private workspacesRepository: Repository<Workspaces>) {
+  constructor(private workspacesRepository: Repository<Workspace>) {
     this.workspacesRepository = workspacesRepository;
   }
 
@@ -291,7 +291,7 @@ export class MessageSender {
         const mailgun = new Mailgun(formData);
         const mg = mailgun.client({ username: 'api', key: key });
         const mailgunMessage = await mg.messages.create(domain, {
-          from: `${from} <${email}@${domain}>`,
+          from: `${from} <${email}>`,
           to: to,
           cc: cc,
           subject: subjectWithInsertedTags,

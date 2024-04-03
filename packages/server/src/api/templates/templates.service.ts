@@ -45,7 +45,7 @@ import { TestWebhookDto } from './dto/test-webhook.dto';
 import wait from '../../utils/wait';
 import { ModalsService } from '../modals/modals.service';
 import { WebsocketGateway } from '../../websockets/websocket.gateway';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 @Injectable()
 @QueueEventsListener('message')
@@ -336,7 +336,7 @@ export class TemplatesService extends QueueEventsHost {
    */
   async queueMessage(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     templateId: string,
     customer: CustomerDocument,
     event: EventDto,
@@ -572,7 +572,7 @@ export class TemplatesService extends QueueEventsHost {
     });
   }
 
-  findOneById(workspace: Workspaces, id: string): Promise<Template> {
+  findOneById(workspace: Workspace, id: string): Promise<Template> {
     return this.templatesRepository.findOneBy({
       workspace: {
         id: workspace.id,

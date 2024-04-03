@@ -26,7 +26,7 @@ import e, { query } from 'express';
 import { CountSegmentUsersSizeDTO } from './dto/size-count.dto';
 import { randomUUID } from 'crypto';
 import { Filter, Document } from 'mongodb';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 @Injectable()
 export class SegmentsService {
@@ -206,7 +206,7 @@ export class SegmentsService {
    * @returns
    */
   public async getSegments(
-    workspace: Workspaces,
+    workspace: Workspace,
     type: SegmentType | undefined,
     queryRunner: QueryRunner
   ) {
@@ -380,7 +380,7 @@ export class SegmentsService {
     batchSize: number,
     segmentId: string,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner: QueryRunner
   ): Promise<void> {
     const mongoCollection = this.connection.db.collection(collectionName);
@@ -771,7 +771,7 @@ export class SegmentsService {
    */
   public async updateCustomerSegments(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     customerId: string,
     session: string,
     queryRunner: QueryRunner
@@ -870,7 +870,7 @@ export class SegmentsService {
    */
   public async addCustomerToSegment(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     segmentId: string,
     customerId: string,
     session: string,
@@ -924,7 +924,7 @@ export class SegmentsService {
 
   public async assignCustomer(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     id: string,
     customerId: string,
     session: string
@@ -973,7 +973,7 @@ export class SegmentsService {
 
   public async assignCustomers(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     id: string,
     customerIds: string[],
     session: string
@@ -989,7 +989,7 @@ export class SegmentsService {
 
   public async updateSegmentCustomersBatched(
     collectionName: string,
-    workspace: Workspaces,
+    workspace: Workspace,
     segmentId: string,
     session: string,
     queryRunner: QueryRunner,
@@ -1197,7 +1197,7 @@ export class SegmentsService {
 
   public async updateAutomaticSegmentCustomerInclusion(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     customer: CustomerDocument,
     session: string
   ) {

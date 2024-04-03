@@ -26,7 +26,7 @@ import { Queue } from 'bullmq';
 import { Webhook } from 'svix';
 import fetch from 'node-fetch'; // Ensure you have node-fetch if you're using Node.js
 import { ProviderType } from '../events/events.preprocessor';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 export enum ClickHouseEventProvider {
   MAILGUN = 'mailgun',
@@ -74,8 +74,8 @@ export class WebhooksService {
     private readonly logger: Logger,
     @InjectRepository(Step)
     private stepRepository: Repository<Step>,
-    @InjectRepository(Workspaces)
-    private workspacesRepository: Repository<Workspaces>,
+    @InjectRepository(Workspace)
+    private workspacesRepository: Repository<Workspace>,
     @Inject(KafkaProducerService)
     private kafkaService: KafkaProducerService,
     @InjectQueue('events_pre')

@@ -18,7 +18,7 @@ import { CustomersService } from '../customers/customers.service';
 import { Journey } from '../journeys/entities/journey.entity';
 import { InjectConnection } from '@nestjs/mongoose';
 import mongoose, { ClientSession } from 'mongoose';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 @Injectable()
 export class StepsService {
@@ -148,7 +148,7 @@ export class StepsService {
    */
   async triggerStart(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     query: any,
     audienceSize: number,
@@ -273,7 +273,7 @@ export class StepsService {
    * @returns
    */
   async transactionalfindAllByTypeInJourney(
-    workspace: Workspaces,
+    workspace: Workspace,
     type: StepType,
     journeyID: string,
     queryRunner: QueryRunner,
@@ -390,7 +390,7 @@ export class StepsService {
    */
   async findOne(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     id: string,
     session: string
   ): Promise<Step | null> {
@@ -413,7 +413,7 @@ export class StepsService {
    * @returns
    */
   async findByJourneyAndType(
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: string,
     type: StepType,
     session: string,
@@ -450,7 +450,7 @@ export class StepsService {
     id: string,
     session: string,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner?: QueryRunner
   ): Promise<Step | null> {
     if (queryRunner) {
@@ -507,7 +507,7 @@ export class StepsService {
    */
   async insert(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     createStepDto: CreateStepDto,
     session: string
   ): Promise<Step> {
@@ -536,7 +536,7 @@ export class StepsService {
    */
   async transactionalInsert(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     createStepDto: CreateStepDto,
     queryRunner: QueryRunner,
     session: string
@@ -569,7 +569,7 @@ export class StepsService {
    */
   async transactionalfindByJourneyID(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     id: string,
     queryRunner: QueryRunner
   ) {
@@ -741,7 +741,7 @@ export class StepsService {
   }
   async requeueMessage(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     step: Step,
     customerId: string,
     requeueTime: Date,

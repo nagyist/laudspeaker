@@ -35,10 +35,11 @@ import { StepType } from '../steps/types/step.interface';
 import { randomUUID } from 'crypto';
 import admin from 'firebase-admin';
 import { update } from 'lodash';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 import { Organization } from '../organizations/entities/organization.entity';
 import { OrganizationTeam } from '../organizations/entities/organization-team.entity';
 import { OrganizationService } from '../organizations/organizations.service';
+import { WorkspaceMailgunConnection } from '../workspaces/entities/workspace-mailgun-connection.entity';
 
 @Injectable()
 export class AccountsService extends BaseJwtHelper {
@@ -51,8 +52,8 @@ export class AccountsService extends BaseJwtHelper {
     private dataSource: DataSource,
     @InjectRepository(Account)
     public accountsRepository: Repository<Account>,
-    @InjectRepository(Workspaces)
-    public workspacesRepository: Repository<Workspaces>,
+    @InjectRepository(Workspace)
+    public workspacesRepository: Repository<Workspace>,
     @Inject(forwardRef(() => CustomersService))
     private customersService: CustomersService,
     @Inject(forwardRef(() => AuthService)) private authService: AuthService,
@@ -424,6 +425,7 @@ export class AccountsService extends BaseJwtHelper {
         firstName,
         lastName,
         email,
+        emailConnections,
       } = updateUserDto;
 
       const newPushPlatforms = {
@@ -472,7 +474,7 @@ export class AccountsService extends BaseJwtHelper {
         lastName,
         email,
       });
-      await queryRunner.manager.save(Workspaces, newWorkspace);
+      await queryRunner.manager.save(Workspace, newWorkspace);
 
       if (needEmailUpdate)
         await this.authService.requestVerification(
@@ -641,7 +643,7 @@ export class AccountsService extends BaseJwtHelper {
         });
         await queryRunner.manager.save(organization);
 
-        const workspace = await queryRunner.manager.create(Workspaces, {
+        const workspace = await queryRunner.manager.create(Workspace, {
           name: organization.companyName + ' workspace',
           organization,
           apiKey: process.env.ONBOARDING_ACCOUNT_API_KEY,

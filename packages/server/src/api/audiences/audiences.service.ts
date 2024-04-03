@@ -16,7 +16,7 @@ import { JobsService } from '../jobs/jobs.service';
 import { DateTime } from 'luxon';
 import { TimeJobType } from '../jobs/entities/job.entity';
 import { InclusionCriteria } from '../segments/types/segment.type';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 @Injectable()
 export class AudiencesService {
@@ -398,7 +398,7 @@ export class AudiencesService {
    */
   async moveCustomer(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     from: string | null | undefined,
     to: string | null | undefined,
     customer: CustomerDocument,
@@ -698,7 +698,7 @@ export class AudiencesService {
    */
   async moveCustomers(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     fromAud: Audience | null | undefined,
     toAud: Audience | null | undefined,
     customers: CustomerDocument[],

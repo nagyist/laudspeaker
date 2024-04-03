@@ -29,7 +29,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Job, Queue, UnrecoverableError } from 'bullmq';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import mongoose, { ClientSession, Model } from 'mongoose';
+import mongoose, {
+  ClientSession,
+  FilterQuery,
+  Model,
+  isValidObjectId,
+} from 'mongoose';
 import { EventDocument, Event } from './schemas/event.schema';
 import mockData from '../../fixtures/mockData';
 import { EventKeys, EventKeysDocument } from './schemas/event-keys.schema';
@@ -55,7 +60,7 @@ import {
   PlatformSettings,
   PushPlatforms,
 } from '../templates/entities/template.entity';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 import { ProviderType } from './events.preprocessor';
 import { SendFCMDto } from './dto/send-fcm.dto';
 import { IdentifyCustomerDTO } from './dto/identify-customer.dto';
@@ -281,7 +286,7 @@ export class EventsService {
   }
 
   async customPayload(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     eventDto: EventDto,
     session: string
   ) {
@@ -469,7 +474,8 @@ export class EventsService {
     session: string,
     take = 100,
     skip = 0,
-    search = ''
+    search = '',
+    customerId?: string
   ) {
     this.debug(
       ` in customEvents`,
@@ -478,18 +484,37 @@ export class EventsService {
       account.id
     );
 
+    let customer: CustomerDocument | undefined;
+    if (customerId && isValidObjectId(customerId)) {
+      customer = await this.customersService.CustomerModel.findById(
+        customerId
+      ).exec();
+    }
+
+    const pk: string | undefined = await this.customersService.getPrimaryKey(
+      account.currentWorkspace,
+      ''
+    );
+
     //console.log("in customEvents")
     const searchRegExp = new RegExp(`.*${search}.*`, 'i');
     const workspace = account.currentWorkspace;
 
+    const filterObject: FilterQuery<EventDocument> = {
+      event: searchRegExp,
+      workspaceId: workspace.id,
+      ...(customer
+        ? {
+            $or: [
+              { correlationKey: '_id', correlationValue: customerId },
+              { correlationKey: pk, correlationValue: customer[pk] },
+            ],
+          }
+        : {}),
+    };
+
     const totalPages =
-      Math.ceil(
-        (await this.EventModel.count({
-          event: searchRegExp,
-          workspaceId: workspace.id,
-          //ownerId: (<Account>account).id,
-        }).exec()) / take
-      ) || 1;
+      Math.ceil((await this.EventModel.count(filterObject).exec()) / take) || 1;
 
     //console.log("regex", searchRegExp );
     //console.log("ownderId", (<Account>account).id );
@@ -509,11 +534,7 @@ export class EventsService {
     */
     const customEvents = await this.EventModel.aggregate([
       {
-        $match: {
-          event: searchRegExp,
-          workspaceId: workspace.id,
-          //ownerId: (<Account>account).id,
-        },
+        $match: filterObject,
       },
       {
         $addFields: {
@@ -675,7 +696,7 @@ export class EventsService {
   }
 
   async sendFCMToken(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     body: SendFCMDto,
     session: string
   ) {
@@ -713,7 +734,7 @@ export class EventsService {
   }
 
   async identifyCustomer(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     body: IdentifyCustomerDTO,
     session: string
   ) {
@@ -791,7 +812,7 @@ export class EventsService {
   }
 
   async setCustomerProperties(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     body: SetCustomerPropsDTO,
     session: string
   ) {
@@ -839,86 +860,95 @@ export class EventsService {
       (el) => !!el
     );
 
-    try {
-      if (!hasConnected) {
-        throw new HttpException(
-          "You don't have platform's connected",
-          HttpStatus.NOT_ACCEPTABLE
-        );
-      }
-
-      const customer = await this.customersService.findById(
-        workspace,
-        body.customerId
+    if (!hasConnected) {
+      throw new HttpException(
+        "You don't have platform's connected",
+        HttpStatus.NOT_ACCEPTABLE
       );
+    }
 
-      if (!customer.androidDeviceToken && !customer.iosDeviceToken) {
-        throw new HttpException(
-          "Selected customer don't have androidDeviceToken nor iosDeviceToken.",
-          HttpStatus.NOT_ACCEPTABLE
-        );
-      }
+    const customer = await this.customersService.findById(
+      workspace,
+      body.customerId
+    );
 
-      await Promise.all(
-        Object.entries(body.pushObject.platform)
-          .filter(
-            ([platform, isEnabled]) =>
-              isEnabled && workspace.pushPlatforms[platform]
-          )
-          .map(async ([platform]) => {
-            if (!workspace.pushPlatforms[platform]) {
+    if (
+      (!customer.androidFCMTokens || customer.androidFCMTokens.length === 0) &&
+      (!customer.iosFCMTokens || customer.iosFCMTokens.length === 0)
+    ) {
+      throw new HttpException(
+        "Selected customer don't have androidFCMTokens nor iosFCMTokens.",
+        HttpStatus.NOT_ACCEPTABLE
+      );
+    }
+
+    await Promise.all(
+      Object.entries(body.pushObject.platform)
+        .filter(
+          ([platform, isEnabled]) =>
+            isEnabled && workspace.pushPlatforms[platform]
+        )
+        .map(async ([platform]) => {
+          if (!workspace.pushPlatforms[platform]) {
+            throw new HttpException(
+              `Platform ${platform} is not connected.`,
+              HttpStatus.NOT_ACCEPTABLE
+            );
+          }
+
+          if (
+            platform === PushPlatforms.ANDROID &&
+            (!customer.androidFCMTokens ||
+              customer.androidFCMTokens.length === 0)
+          ) {
+            this.logger.warn(
+              `Customer ${body.customerId} don't have androidDeviceToken to test push notification. Skipping.`
+            );
+            return;
+          }
+
+          if (
+            platform === PushPlatforms.IOS &&
+            (!customer.iosFCMTokens || customer.iosFCMTokens.length === 0)
+          ) {
+            this.logger.warn(
+              `Customer ${body.customerId} don't have iosDeviceToken to test push notification. Skipping.`
+            );
+            return;
+          }
+
+          const settings: PlatformSettings = body.pushObject.settings[platform];
+          let firebaseApp;
+          try {
+            firebaseApp = admin.app(foundAcc.id + ';;' + platform);
+          } catch (e: any) {
+            if (e.code == 'app/no-app') {
+              firebaseApp = admin.initializeApp(
+                {
+                  credential: admin.credential.cert(
+                    workspace.pushPlatforms[platform].credentials
+                  ),
+                },
+                `${foundAcc.id};;${platform}`
+              );
+            } else {
               throw new HttpException(
-                `Platform ${platform} is not connected.`,
-                HttpStatus.NOT_ACCEPTABLE
+                `Error while using credentials for ${platform}.`,
+                HttpStatus.FAILED_DEPENDENCY
               );
             }
+          }
 
-            if (
-              platform === PushPlatforms.ANDROID &&
-              !customer.androidDeviceToken
-            ) {
-              this.logger.warn(
-                `Customer ${body.customerId} don't have androidDeviceToken property to test push notification. Skipping.`
-              );
-              return;
-            }
+          const messaging = admin.messaging(firebaseApp);
 
-            if (platform === PushPlatforms.IOS && !customer.iosDeviceToken) {
-              this.logger.warn(
-                `Customer ${body.customerId} don't have iosDeviceToken property to test push notification. Skipping.`
-              );
-              return;
-            }
+          const tokenStorage =
+            platform === PushPlatforms.ANDROID
+              ? customer.androidFCMTokens
+              : customer.iosFCMTokens;
 
-            const settings: PlatformSettings =
-              body.pushObject.settings[platform];
-            let firebaseApp;
-            try {
-              firebaseApp = admin.app(foundAcc.id + ';;' + platform);
-            } catch (e: any) {
-              if (e.code == 'app/no-app') {
-                firebaseApp = admin.initializeApp(
-                  {
-                    credential: admin.credential.cert(
-                      workspace.pushPlatforms[platform].credentials
-                    ),
-                  },
-                  `${foundAcc.id};;${platform}`
-                );
-              } else {
-                throw new HttpException(
-                  `Error while using credentials for ${platform}.`,
-                  HttpStatus.FAILED_DEPENDENCY
-                );
-              }
-            }
-
-            const messaging = admin.messaging(firebaseApp);
+          for (const token of tokenStorage) {
             await messaging.send({
-              token:
-                platform === PushPlatforms.ANDROID
-                  ? customer.androidDeviceToken
-                  : customer.iosDeviceToken,
+              token,
               notification: {
                 title: settings.title,
                 body: settings.description,
@@ -954,15 +984,13 @@ export class EventsService {
                 return acc;
               }, {}),
             });
-          })
-      );
-    } catch (e) {
-      throw e;
-    }
+          }
+        })
+    );
   }
 
   async batch(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     MobileBatchDto: MobileBatchDto,
     session: string
   ) {
@@ -1029,7 +1057,7 @@ export class EventsService {
   }
 
   async handleSet(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     event: EventDto,
     session: string
   ) {
@@ -1271,7 +1299,7 @@ export class EventsService {
    */
 
   async handleIdentify(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     event: EventDto, // Assuming EventDto has all the necessary fields including payload
     session: string
   ) {
@@ -1414,7 +1442,7 @@ export class EventsService {
   }
 
   async handleFCM(
-    auth: { account: Account; workspace: Workspaces },
+    auth: { account: Account; workspace: Workspace },
     event: EventDto,
     session: string
   ) {

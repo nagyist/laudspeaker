@@ -83,7 +83,7 @@ import { RedisService } from '@liaoliaots/nestjs-redis';
 import { JourneyChange } from './entities/journey-change.entity';
 import isObjectDeepEqual from '@/utils/isObjectDeepEqual';
 import { JourneyLocation } from './entities/journey-location.entity';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 export enum JourneyStatus {
   ACTIVE = 'Active',
@@ -642,7 +642,7 @@ export class JourneysService {
    */
   public async updateEnrollmentForCustomer(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     customerId: string,
     customerUpdateType: 'NEW' | 'CHANGE',
     session: string,
@@ -749,7 +749,7 @@ export class JourneysService {
    */
   async enrollCustomersInJourney(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     customers: CustomerDocument[],
     locations: JourneyLocation[],
@@ -1798,6 +1798,10 @@ export class JourneysService {
               return node.id === relevantEdges[0].target;
             })[0].data.stepId;
             metadata.channel = nodes[i].data['template']['type'];
+
+            metadata.connectionId = nodes[i].data.connectionId;
+            metadata.sendingOptionId = nodes[i].data.sendingOptionId;
+
             metadata.customName = nodes[i].data['customName'] || 'Unknown name';
             if (nodes[i].data['template']['selected'])
               metadata.template = nodes[i].data['template']['selected']['id'];
@@ -2584,7 +2588,7 @@ export class JourneysService {
    *    false if rate limit not yet reached (aka new customer can be added)
    */
   async rateLimitEntryByUniqueEnrolledCustomers(
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     queryRunner?: QueryRunner
   ) {

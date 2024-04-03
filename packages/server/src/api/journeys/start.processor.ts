@@ -20,7 +20,7 @@ import { Journey } from './entities/journey.entity';
 import { JourneyLocationsService } from './journey-locations.service';
 import { JourneysService } from './journeys.service';
 import { Step } from '../steps/entities/step.entity';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 const BATCH_SIZE = +process.env.START_BATCH_SIZE;
 
@@ -127,7 +127,7 @@ export class StartProcessor extends WorkerHost {
     job: Job<
       {
         owner: Account;
-        workspace: Workspaces;
+        workspace: Workspace;
         step: Step;
         journey: Journey;
         skip: number;

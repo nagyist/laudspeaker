@@ -20,7 +20,7 @@ import { date } from 'liquidjs/dist/builtin/filters';
 import { randomUUID } from 'crypto';
 import { Readable } from 'node:stream';
 import * as copyFrom from 'pg-copy-streams';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 const LOCATION_LOCK_TIMEOUT_MS = +process.env.LOCATION_LOCK_TIMEOUT_MS;
 
@@ -121,7 +121,7 @@ export class JourneyLocationsService {
     step: Step,
     session: string,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner?: QueryRunner
   ) {
     this.log(
@@ -206,7 +206,7 @@ export class JourneyLocationsService {
     step: Step,
     session: string,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner: QueryRunner,
     client: any
   ): Promise<void> {
@@ -268,7 +268,7 @@ export class JourneyLocationsService {
     to: Step,
     session: string,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner?: QueryRunner
   ) {
     const location = await this.findForWrite(
@@ -439,7 +439,7 @@ export class JourneyLocationsService {
     to: Step,
     session: string,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner?: QueryRunner
   ) {
     this.log(
@@ -513,7 +513,7 @@ export class JourneyLocationsService {
     customer: CustomerDocument,
     session: string,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner?: QueryRunner
   ): Promise<JourneyLocation> {
     this.log(
@@ -682,7 +682,7 @@ export class JourneyLocationsService {
     customer: CustomerDocument,
     session: string,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner?: QueryRunner
   ) {
     const location = await this.findForWrite(
@@ -712,7 +712,7 @@ export class JourneyLocationsService {
     location: JourneyLocation,
     session: string,
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner?: QueryRunner
   ) {
     this.log(
@@ -788,7 +788,7 @@ export class JourneyLocationsService {
    * @returns number of unique customers enrolled in a specific journey
    */
   async getNumberOfEnrolledCustomers(
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     runner?: QueryRunner
   ) {

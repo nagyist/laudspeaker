@@ -20,7 +20,7 @@ import { TemplatesService } from '../templates/templates.service';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Account } from '../accounts/entities/accounts.entity';
 import { Repository } from 'typeorm';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 @Processor('webhooks', { removeOnComplete: { age: 0, count: 0 } })
 @Injectable()
@@ -32,8 +32,8 @@ export class WebhooksProcessor extends WorkerHost {
     private readonly logger: Logger,
     private readonly webhooksService: WebhooksService,
     private readonly templatesService: TemplatesService,
-    @InjectRepository(Workspaces)
-    private workspacesRepository: Repository<Workspaces>
+    @InjectRepository(Workspace)
+    private workspacesRepository: Repository<Workspace>
   ) {
     super();
   }

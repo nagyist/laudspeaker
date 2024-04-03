@@ -28,9 +28,8 @@ import { WebsocketGateway } from '@/websockets/websocket.gateway';
 import * as _ from 'lodash';
 import * as Sentry from '@sentry/node';
 import { JourneyLocationsService } from '../journeys/journey-locations.service';
-import { Workspace } from 'aws-sdk/clients/workspaces';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 export enum EventType {
   EVENT = 'event',
@@ -152,7 +151,7 @@ export class EventsProcessor extends WorkerHost {
     job: Job<
       {
         account: Account;
-        workspace: Workspaces;
+        workspace: Workspace;
         journey: Journey;
         customer: CustomerDocument;
         event: any;

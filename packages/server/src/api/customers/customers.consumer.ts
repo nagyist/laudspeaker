@@ -26,7 +26,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ProviderType } from '../events/events.preprocessor';
 import { KEYS_TO_SKIP } from '@/utils/customer-key-name-validator';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 const containsUnskippedKeys = (updateDescription) => {
   // Combine keys from updatedFields, removedFields, and the fields of truncatedArrays
@@ -220,7 +220,7 @@ export class CustomersConsumerService implements OnApplicationBootstrap {
                 session
               );
 
-            const workspace = await queryRunner.manager.findOneBy(Workspaces, {
+            const workspace = await queryRunner.manager.findOneBy(Workspace, {
               id: customer.workspaceId,
             });
 

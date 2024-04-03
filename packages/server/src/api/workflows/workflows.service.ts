@@ -50,7 +50,7 @@ import { Template } from '../templates/entities/template.entity';
 import { BadRequestException } from '@nestjs/common/exceptions';
 import { Job, TimeJobType } from '../jobs/entities/job.entity';
 import { Filter } from '../filter/entities/filter.entity';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 export enum JourneyStatus {
   ACTIVE = 'Active',
@@ -753,7 +753,7 @@ export class WorkflowsService {
    */
   async enrollCustomer(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     customer: CustomerDocument,
     queryRunner: QueryRunner,
     clientSession: ClientSession,
@@ -856,7 +856,7 @@ export class WorkflowsService {
    */
   async tick(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     event: EventDto | null | undefined,
     queryRunner: QueryRunner,
     transactionSession: ClientSession,

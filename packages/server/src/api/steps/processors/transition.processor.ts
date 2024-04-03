@@ -1,5 +1,11 @@
 /* eslint-disable no-case-declarations */
-import { HttpException, HttpStatus, Inject, Logger } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  Inject,
+  Logger,
+  forwardRef,
+} from '@nestjs/common';
 import * as http from 'node:http';
 import https from 'https';
 import { Injectable } from '@nestjs/common';
@@ -56,7 +62,8 @@ import { JourneySettingsQuietFallbackBehavior } from '@/api/journeys/types/addit
 import { StepsService } from '../steps.service';
 import { Journey } from '@/api/journeys/entities/journey.entity';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Workspaces } from '@/api/workspaces/entities/workspaces.entity';
+import { Workspace } from '@/api/workspaces/entities/workspace.entity';
+import { WorkspacesService } from '@/api/workspaces/workspaces.service';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { JourneyLocation } from '@/api/journeys/entities/journey-location.entity';
@@ -79,8 +86,8 @@ export class TransitionProcessor extends WorkerHost {
     @InjectQueue('transition') private readonly transitionQueue: Queue,
     @InjectQueue('webhooks') private readonly webhooksQueue: Queue,
     @InjectConnection() private readonly connection: mongoose.Connection,
-    @InjectRepository(Workspaces)
-    private workspacesRepository: Repository<Workspaces>,
+    @InjectRepository(Workspace)
+    private workspacesRepository: Repository<Workspace>,
     @InjectRepository(Account)
     private accountRepository: Repository<Account>,
     @Inject(WebhooksService)
@@ -99,6 +106,8 @@ export class TransitionProcessor extends WorkerHost {
     @Inject(JourneyLocationsService)
     private journeyLocationsService: JourneyLocationsService,
     @Inject(StepsService) private stepsService: StepsService,
+    @Inject(forwardRef(() => WorkspacesService))
+    private workspacesService: WorkspacesService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {
     super();
@@ -168,7 +177,7 @@ export class TransitionProcessor extends WorkerHost {
       {
         step: Step;
         owner: Account;
-        workspace: Workspaces;
+        workspace: Workspace;
         journey: Journey;
         customer: CustomerDocument;
         location: JourneyLocation;
@@ -309,6 +318,7 @@ export class TransitionProcessor extends WorkerHost {
       }
       // await queryRunner.commitTransaction();
     } catch (e) {
+      console.error(e);
       this.error(e, this.process.name, job.data.session);
       err = e;
       // await queryRunner.rollbackTransaction();
@@ -343,7 +353,7 @@ export class TransitionProcessor extends WorkerHost {
   //     where: { id: ownerID },
   //     relations: ['teams.organization.workspaces'],
   //   });
-  //   const workspace = await queryRunner.manager.findOne(Workspaces, {
+  //   const workspace = await queryRunner.manager.findOne(Workspace, {
   //     where: { id: workspaceID },
   //   });
 
@@ -580,7 +590,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleMessage(
     owner: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     step: Step,
     session: string,
@@ -588,6 +598,17 @@ export class TransitionProcessor extends WorkerHost {
     location: JourneyLocation,
     event?: string
   ) {
+    owner = await this.accountRepository.findOne({
+      where: { id: owner.id },
+      relations: [
+        'teams.organization.workspaces',
+        'teams.organization.workspaces.mailgunConnections.sendingOptions',
+        'teams.organization.workspaces.sendgridConnections.sendingOptions',
+        'teams.organization.workspaces.resendConnections.sendingOptions',
+        'teams.organization.workspaces.twilioConnections',
+        'teams.organization.workspaces.pushConnections',
+      ],
+    });
     let job;
 
     // Rate limiting and sending quiet hours will be stored here
@@ -737,53 +758,78 @@ export class TransitionProcessor extends WorkerHost {
       }
       const { email } = owner;
 
-      const {
-        mailgunAPIKey,
-        sendingName,
-        testSendingEmail,
-        testSendingName,
-        sendgridApiKey,
-        sendgridFromEmail,
-        resendSendingDomain,
-        resendAPIKey,
-        resendSendingName,
-        resendSendingEmail,
-      } = workspace;
-
-      let { sendingDomain, sendingEmail } = workspace;
-
-      let key = mailgunAPIKey;
-      let from = sendingName;
-
       const { _id, workspaceId, workflows, journeys, ...tags } = customer;
       const filteredTags = cleanTagsForSending(tags);
       const sender = new MessageSender(this.workspacesRepository);
 
       switch (template.type) {
         case TemplateType.EMAIL:
-          if (workspace.emailProvider === 'free3') {
-            if (workspace.freeEmailsCount === 0)
-              throw new HttpException(
-                'You exceeded limit of 3 emails',
-                HttpStatus.PAYMENT_REQUIRED
+          const mailgunChannel = workspace.mailgunConnections.find(
+            (connection) => connection.id === step.metadata.connectionId
+          );
+          const sendgridChannel = workspace.sendgridConnections.find(
+            (connection) => connection.id === step.metadata.connectionId
+          );
+          const resendChannel = workspace.resendConnections.find(
+            (connection) => connection.id === step.metadata.connectionId
+          );
+
+          const emailProvider = mailgunChannel
+            ? 'mailgun'
+            : sendgridChannel
+            ? 'sendgrid'
+            : resendChannel
+            ? 'resend'
+            : undefined;
+
+          // if (emailProvider === 'free3') {
+          //   if (workspace.freeEmailsCount === 0)
+          //     throw new HttpException(
+          //       'You exceeded limit of 3 emails',
+          //       HttpStatus.PAYMENT_REQUIRED
+          //     );
+          //   sendingDomain = process.env.MAILGUN_TEST_DOMAIN;
+          //   key = process.env.MAILGUN_API_KEY;
+          //   from = testSendingName;
+          //   sendingEmail = testSendingEmail;
+          //   workspace.freeEmailsCount--;
+          // }
+
+          let key: string,
+            sendingDomain: string,
+            from: string,
+            sendingEmail: string;
+
+          switch (emailProvider) {
+            case 'mailgun':
+              key = mailgunChannel.apiKey;
+              sendingDomain = mailgunChannel.sendingDomain;
+              const mailgunSendingOption = mailgunChannel.sendingOptions.find(
+                ({ id }) => id === step.metadata.sendingOptionId
               );
-            sendingDomain = process.env.MAILGUN_TEST_DOMAIN;
-            key = process.env.MAILGUN_API_KEY;
-            from = testSendingName;
-            sendingEmail = testSendingEmail;
-            workspace.freeEmailsCount--;
+              from = mailgunSendingOption.sendingName;
+              sendingEmail = mailgunSendingOption.sendingEmail;
+              break;
+            case 'sendgrid':
+              key = sendgridChannel.apiKey;
+              const sendgridSendingOption = sendgridChannel.sendingOptions.find(
+                ({ id }) => id === step.metadata.sendingOptionId
+              );
+              from = sendgridSendingOption.sendingEmail;
+              break;
+            case 'resend':
+              sendingDomain = resendChannel.sendingDomain;
+              key = resendChannel.apiKey;
+              const resendSendingOption = resendChannel.sendingOptions.find(
+                ({ id }) => id === step.metadata.sendingOptionId
+              );
+              from = resendSendingOption.sendingName;
+              sendingEmail = resendSendingOption.sendingEmail;
+              break;
+            default:
+              break;
           }
 
-          if (workspace.emailProvider === 'resend') {
-            sendingDomain = workspace.resendSendingDomain;
-            key = workspace.resendAPIKey;
-            from = workspace.resendSendingName;
-            sendingEmail = workspace.resendSendingEmail;
-          }
-          if (workspace.emailProvider === 'sendgrid') {
-            key = sendgridApiKey;
-            from = sendgridFromEmail;
-          }
           const ret = await sender.process({
             name: TemplateType.EMAIL,
             accountID: owner.id,
@@ -807,7 +853,7 @@ export class TransitionProcessor extends WorkerHost {
             ),
             tags: filteredTags,
             templateID: template.id,
-            eventProvider: workspace.emailProvider,
+            eventProvider: emailProvider,
           });
           this.debug(
             `${JSON.stringify(ret)}`,
@@ -818,94 +864,111 @@ export class TransitionProcessor extends WorkerHost {
             ret,
             session
           );
-          if (workspace.emailProvider === 'free3') {
-            await owner.save();
-            await workspace.save();
-          }
+          // if (emailProvider === 'free3') {
+          //   await owner.save();
+          //   await workspace.save();
+          // }
           break;
         case TemplateType.PUSH:
+          const pushChannel = workspace.pushConnections.find(
+            (connection) => connection.id === step.metadata.connectionId
+          );
+
           switch (step.metadata.selectedPlatform) {
             case 'All':
-              await this.webhooksService.insertMessageStatusToClickhouse(
-                await sender.process({
-                  name: 'android',
-                  accountID: owner.id,
-                  workspaceID: workspace.id,
-                  stepID: step.id,
-                  customerID: customer._id,
-                  firebaseCredentials:
-                    workspace.pushPlatforms.Android.credentials,
-                  deviceToken: customer.androidDeviceToken,
-                  pushTitle: template.pushObject.settings.Android.title,
-                  pushText: template.pushObject.settings.Android.description,
-                  trackingEmail: email,
-                  filteredTags: filteredTags,
-                  templateID: template.id,
-                  quietHours: journey.journeySettings.quietHours.enabled
-                    ? journey.journeySettings?.quietHours
-                    : undefined,
-                }),
-                session
+              const tokenStorageAndroidIOS = [...customer.iosFCMTokens].reduce(
+                (acc, el) => (acc.includes(el) ? acc : [...acc, el]),
+                [] as string[]
               );
-              await this.webhooksService.insertMessageStatusToClickhouse(
-                await sender.process({
-                  name: 'ios',
-                  accountID: owner.id,
-                  workspaceID: workspace.id,
-                  stepID: step.id,
-                  customerID: customer._id,
-                  firebaseCredentials: workspace.pushPlatforms.iOS.credentials,
-                  deviceToken: customer.iosDeviceToken,
-                  pushTitle: template.pushObject.settings.iOS.title,
-                  pushText: template.pushObject.settings.iOS.description,
-                  trackingEmail: email,
-                  filteredTags: filteredTags,
-                  templateID: template.id,
-                }),
-                session
-              );
+              for (const token of tokenStorageAndroidIOS) {
+                await this.webhooksService.insertMessageStatusToClickhouse(
+                  await sender.process({
+                    name: 'ios',
+                    accountID: owner.id,
+                    workspaceID: workspace.id,
+                    stepID: step.id,
+                    customerID: customer._id,
+                    firebaseCredentials:
+                      pushChannel.pushPlatforms.Android.credentials,
+                    deviceToken: token,
+                    pushTitle: template.pushObject.settings.iOS.title,
+                    pushText: template.pushObject.settings.iOS.description,
+                    trackingEmail: email,
+                    filteredTags: filteredTags,
+                    templateID: template.id,
+                  }),
+                  session
+                );
+              }
+              for (const token of tokenStorageAndroidIOS) {
+                await this.webhooksService.insertMessageStatusToClickhouse(
+                  await sender.process({
+                    name: 'android',
+                    accountID: owner.id,
+                    workspaceID: workspace.id,
+                    stepID: step.id,
+                    customerID: customer._id,
+                    firebaseCredentials:
+                      pushChannel.pushPlatforms.Android.credentials,
+                    deviceToken: token,
+                    pushTitle: template.pushObject.settings.Android.title,
+                    pushText: template.pushObject.settings.Android.description,
+                    trackingEmail: email,
+                    filteredTags: filteredTags,
+                    templateID: template.id,
+                  }),
+                  session
+                );
+              }
+
               break;
             case 'iOS':
-              await this.webhooksService.insertMessageStatusToClickhouse(
-                await sender.process({
-                  name: 'ios',
-                  accountID: owner.id,
-                  workspaceID: workspace.id,
-                  stepID: step.id,
-                  customerID: customer._id,
-                  firebaseCredentials: workspace.pushPlatforms.iOS.credentials,
-                  deviceToken: customer.iosDeviceToken,
-                  pushTitle: template.pushObject.settings.iOS.title,
-                  pushText: template.pushObject.settings.iOS.description,
-                  trackingEmail: email,
-                  filteredTags: filteredTags,
-                  templateID: template.id,
-                }),
-                session
-              );
+              const iosTokenStorage = customer.iosFCMTokens;
+              for (const token of iosTokenStorage) {
+                await this.webhooksService.insertMessageStatusToClickhouse(
+                  await sender.process({
+                    name: 'ios',
+                    accountID: owner.id,
+                    workspaceID: workspace.id,
+                    stepID: step.id,
+                    customerID: customer._id,
+                    firebaseCredentials:
+                      pushChannel.pushPlatforms.iOS.credentials,
+                    deviceToken: token,
+                    pushTitle: template.pushObject.settings.iOS.title,
+                    pushText: template.pushObject.settings.iOS.description,
+                    trackingEmail: email,
+                    filteredTags: filteredTags,
+                    templateID: template.id,
+                  }),
+                  session
+                );
+              }
               break;
             case 'Android':
-              await this.webhooksService.insertMessageStatusToClickhouse(
-                await sender.process({
-                  name: 'android',
-                  accountID: owner.id,
-                  workspaceID: workspace.id,
-                  stepID: step.id,
-                  customerID: customer._id,
-                  firebaseCredentials:
-                    workspace.pushPlatforms.Android.credentials,
-                  deviceToken: customer.androidDeviceToken,
-                  pushTitle: template.pushObject.settings.Android.title,
-                  pushText: template.pushObject.settings.Android.description,
-                  trackingEmail: email,
-                  filteredTags: filteredTags,
-                  templateID: template.id,
-                  quietHours: journey.journeySettings.quietHours.enabled
-                    ? journey.journeySettings?.quietHours
-                    : undefined,
-                }),
-                session
-              );
+              const androidTokenStorage = customer.androidFCMTokens;
+
+              for (const token of androidTokenStorage) {
+                await this.webhooksService.insertMessageStatusToClickhouse(
+                  await sender.process({
+                    name: 'android',
+                    accountID: owner.id,
+                    workspaceID: workspace.id,
+                    stepID: step.id,
+                    customerID: customer._id,
+                    firebaseCredentials:
+                      pushChannel.pushPlatforms.iOS.credentials,
+                    deviceToken: token,
+                    pushTitle: template.pushObject.settings.Android.title,
+                    pushText: template.pushObject.settings.Android.description,
+                    trackingEmail: email,
+                    filteredTags: filteredTags,
+                    templateID: template.id,
+                  }),
+                  session
+                );
+              }
+
               break;
           }
           break;
@@ -946,6 +1009,10 @@ export class TransitionProcessor extends WorkerHost {
           );
           break;
         case TemplateType.SMS:
+          const twilioChannel = workspace.twilioConnections.find(
+            (connection) => connection.id === step.metadata.connectionId
+          );
+
           await this.webhooksService.insertMessageStatusToClickhouse(
             await sender.process({
               name: TemplateType.SMS,
@@ -954,15 +1021,15 @@ export class TransitionProcessor extends WorkerHost {
               stepID: step.id,
               customerID: customer._id,
               templateID: template.id,
-              from: workspace.smsFrom,
-              sid: workspace.smsAccountSid,
+              from: twilioChannel.from,
+              sid: twilioChannel.sid,
               tags: filteredTags,
               text: await this.templatesService.parseApiCallTags(
                 template.smsText,
                 filteredTags
               ),
               to: customer.phPhoneNumber || customer.phone,
-              token: workspace.smsAuthToken,
+              token: twilioChannel.token,
               trackingEmail: email,
             }),
             session
@@ -1147,7 +1214,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleStart(
     owner: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     step: Step,
     session: string,
@@ -1229,7 +1296,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleTimeDelay(
     owner: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     step: Step,
     session: string,
@@ -1300,7 +1367,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleTimeWindow(
     owner: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     step: Step,
     session: string,
@@ -1407,7 +1474,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleWaitUntil(
     owner: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     step: Step,
     session: string,
@@ -1608,7 +1675,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleMultisplit(
     owner: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     step: Step,
     session: string,
@@ -1686,7 +1753,7 @@ export class TransitionProcessor extends WorkerHost {
    */
   async handleLoop(
     owner: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     step: Step,
     session: string,
@@ -1739,7 +1806,7 @@ export class TransitionProcessor extends WorkerHost {
 
   async handleExperiment(
     owner: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     journey: Journey,
     step: Step,
     session: string,

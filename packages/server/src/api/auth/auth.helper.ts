@@ -21,7 +21,7 @@ import generateName from '@good-ghosting/random-name-generator';
 import { Organization } from '../organizations/entities/organization.entity';
 import { OrganizationTeam } from '../organizations/entities/organization-team.entity';
 import { randomUUID } from 'crypto';
-import { Workspaces } from '../workspaces/entities/workspaces.entity';
+import { Workspace } from '../workspaces/entities/workspace.entity';
 
 @Injectable()
 export class AuthHelper extends BaseJwtHelper {
@@ -125,6 +125,11 @@ export class AuthHelper extends BaseJwtHelper {
         'teams.organization.workspaces',
         'teams.organization.owner',
         'currentWorkspace',
+        'currentWorkspace.mailgunConnections.sendingOptions',
+        'currentWorkspace.sendgridConnections.sendingOptions',
+        'currentWorkspace.resendConnections.sendingOptions',
+        'currentWorkspace.twilioConnections',
+        'currentWorkspace.pushConnections',
       ],
     });
     /*
@@ -178,7 +183,7 @@ export class AuthHelper extends BaseJwtHelper {
 
   private async generateExampleSideChecklist(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     template: Template,
     queryRunner: QueryRunner,
     session: string
@@ -1001,7 +1006,7 @@ export class AuthHelper extends BaseJwtHelper {
 
   private async generateExampleOnboardingJourney(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner: QueryRunner,
     session: string
   ) {
@@ -1235,7 +1240,7 @@ export class AuthHelper extends BaseJwtHelper {
 
   private async generateExampleSingleCampaignJourney(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner: QueryRunner,
     session: string
   ) {
@@ -1335,7 +1340,7 @@ export class AuthHelper extends BaseJwtHelper {
 
   private async generateExampleModalJourney(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     queryRunner: QueryRunner,
     session: string
   ) {
@@ -1435,7 +1440,7 @@ export class AuthHelper extends BaseJwtHelper {
 
   private async generateExampleThreeBranchEventJourney(
     account: Account,
-    workspace: Workspaces,
+    workspace: Workspace,
     templates: Template[],
     queryRunner: QueryRunner,
     session: string
