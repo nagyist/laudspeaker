@@ -431,7 +431,7 @@ export class JourneysService {
   ) {
     account = await queryRunner.manager.findOne(Account, {
       where: { id: account.id },
-      relations: ['teams.organization.workspaces'],
+      relations: ['teams.organization.workspaces', 'currentWorkspace'],
     });
 
     try {

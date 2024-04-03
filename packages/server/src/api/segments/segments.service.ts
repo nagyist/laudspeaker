@@ -248,7 +248,7 @@ export class SegmentsService {
       where: {
         id: account.id,
       },
-      relations: ['teams.organization.workspaces'],
+      relations: ['teams.organization.workspaces', 'currentWorkspace'],
     });
 
     const workspace = account.currentWorkspace;

@@ -438,10 +438,6 @@ export class MessageProcessor extends WorkerHost {
       );
       return;
     }
-    const account = await this.accountRepository.findOne({
-      where: { id: job.data.accountId },
-      relations: ['teams.organization.workspaces'],
-    });
     const workspace = job.data.workspace;
 
     let textWithInsertedTags, titleWithInsertedTags: string | undefined;
