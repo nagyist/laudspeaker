@@ -26,6 +26,10 @@ describe("eligible users", () => {
     cy.viewport(1920, 1080);
     setupOrganization(organizationName, timeZone);
     createTestCustomer(email);
+
+    cy.wait(1000);
+    cy.reload();
+
     cy.contains("Edit").click();
 
     cy.contains("Add attribute").click();
@@ -63,6 +67,8 @@ describe("eligible users", () => {
 
       cy.contains("Save").click();
 
+
+      cy.contains("Audience").click();
       cy.get("#segments").click();
       cy.contains("Create Segment").click();
       cy.get('[data-option="manual"]').click();
@@ -151,7 +157,10 @@ describe("eligible users", () => {
         waitForAnimations: true,
       });
       cy.get(".dateInput").then(([dateInput]) => {
-        setDate(dateInput as HTMLInputElement, format(new Date(), "yyyy-MM-dd"));
+        setDate(
+          dateInput as HTMLInputElement,
+          format(new Date(), "yyyy-MM-dd")
+        );
         cy.wait(5000);
         cy.contains("of users estimated reached ≈ 1").should("exist");
 
