@@ -16,6 +16,7 @@ export interface NavigationItem {
   imgIcon: string;
   text: string;
   type: string;
+  disabled?: boolean;
   link?: string;
   children?: NavigationItem[];
 }
@@ -137,7 +138,11 @@ const ResponsiveDrawer: FC<ResponsiveDrawerProps> = ({
         <div className="w-full flex flex-col gap-2 ">
           {navigation.map((navigationItem) => (
             <div
-              className="w-full flex justify-center items-center"
+              className={`w-full flex justify-center items-center ${
+                navigationItem.disabled
+                  ? "pointer-events-none grayscale opacity-70"
+                  : ""
+              }`}
               id={navigationItem.id}
               key={navigationItem.id}
             >
@@ -199,6 +204,10 @@ const ResponsiveDrawer: FC<ResponsiveDrawerProps> = ({
                             {navigationItem.children?.map((child) => (
                               <Link
                                 className={`w-full h-[40px] flex items-center select-none cursor-pointer ${
+                                  navigationItem.disabled
+                                    ? "pointer-events-none grayscale opacity-70"
+                                    : ""
+                                } ${
                                   !expandable || isExpanded
                                     ? "pl-[22px]"
                                     : "justify-center"

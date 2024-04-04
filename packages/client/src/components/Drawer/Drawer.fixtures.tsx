@@ -124,13 +124,14 @@ export const workspaceDrawerItems: NavigationItem[] = [
     type: "menu",
     link: "/settings/workspace/account",
   },
-  // {
-  //   id: "billing-plan",
-  //   imgIcon: billingPlanIcon,
-  //   text: "Billing and plan",
-  //   type: "menu",
-  //   link: "/settings/workspace/billing-plan",
-  // },
+  {
+    id: "billing",
+    imgIcon: billingPlanIcon,
+    text: "Billing and plan",
+    type: "menu",
+    link: "/settings/workspace/billing",
+    disabled: true,
+  },
   {
     id: "organization",
     imgIcon: organizationIcon,

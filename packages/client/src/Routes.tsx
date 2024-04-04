@@ -308,14 +308,7 @@ const RouteComponent: React.FC = () => {
             </Protected>
           }
         />
-        <Route
-          path="/billing"
-          element={
-            <DrawerLayout>
-              <Billing />
-            </DrawerLayout>
-          }
-        />
+
         <Route
           path="/verify-email/:id"
           element={
@@ -783,6 +776,18 @@ const RouteComponent: React.FC = () => {
               <VerificationProtected>
                 <WorkspaceDrawerLayout>
                   <WorkspaceAccountSettings />
+                </WorkspaceDrawerLayout>
+              </VerificationProtected>
+            </Protected>
+          }
+        />
+        <Route
+          path="/settings/workspace/billing"
+          element={
+            <Protected>
+              <VerificationProtected>
+                <WorkspaceDrawerLayout>
+                  <Billing />
                 </WorkspaceDrawerLayout>
               </VerificationProtected>
             </Protected>
