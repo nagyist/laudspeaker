@@ -871,13 +871,19 @@ export class TransitionProcessor extends WorkerHost {
           // }
           break;
         case TemplateType.PUSH:
-          const pushChannel = workspace.pushConnections.find(
+          const pushAndroidChannel = workspace.pushConnections.find(
             (connection) => connection.id === step.metadata.connectionId
+          );
+          const pushIosChannel = workspace.pushConnections.find(
+            (connection) => connection.id === step.metadata.connectionIosId
           );
 
           switch (step.metadata.selectedPlatform) {
             case 'All':
-              const tokenStorageAndroidIOS = [...customer.iosFCMTokens].reduce(
+              const tokenStorageAndroidIOS = [
+                ...customer.iosFCMTokens,
+                ...customer.androidFCMTokens,
+              ].reduce(
                 (acc, el) => (acc.includes(el) ? acc : [...acc, el]),
                 [] as string[]
               );
@@ -890,7 +896,7 @@ export class TransitionProcessor extends WorkerHost {
                     stepID: step.id,
                     customerID: customer._id,
                     firebaseCredentials:
-                      pushChannel.pushPlatforms.Android.credentials,
+                      pushIosChannel.pushPlatforms.Android.credentials,
                     deviceToken: token,
                     pushTitle: template.pushObject.settings.iOS.title,
                     pushText: template.pushObject.settings.iOS.description,
@@ -913,7 +919,7 @@ export class TransitionProcessor extends WorkerHost {
                     stepID: step.id,
                     customerID: customer._id,
                     firebaseCredentials:
-                      pushChannel.pushPlatforms.Android.credentials,
+                      pushAndroidChannel.pushPlatforms.Android.credentials,
                     deviceToken: token,
                     pushTitle: template.pushObject.settings.Android.title,
                     pushText: template.pushObject.settings.Android.description,
@@ -940,7 +946,7 @@ export class TransitionProcessor extends WorkerHost {
                     stepID: step.id,
                     customerID: customer._id,
                     firebaseCredentials:
-                      pushChannel.pushPlatforms.iOS.credentials,
+                      pushIosChannel.pushPlatforms.iOS.credentials,
                     deviceToken: token,
                     pushTitle: template.pushObject.settings.iOS.title,
                     pushText: template.pushObject.settings.iOS.description,
@@ -967,7 +973,7 @@ export class TransitionProcessor extends WorkerHost {
                     stepID: step.id,
                     customerID: customer._id,
                     firebaseCredentials:
-                      pushChannel.pushPlatforms.iOS.credentials,
+                      pushAndroidChannel.pushPlatforms.Android.credentials,
                     deviceToken: token,
                     pushTitle: template.pushObject.settings.Android.title,
                     pushText: template.pushObject.settings.Android.description,

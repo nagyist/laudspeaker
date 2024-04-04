@@ -1800,6 +1800,7 @@ export class JourneysService {
             metadata.channel = nodes[i].data['template']['type'];
 
             metadata.connectionId = nodes[i].data.connectionId;
+            metadata.connectionIosId = nodes[i].data.connectionIosId;
             metadata.sendingOptionId = nodes[i].data.sendingOptionId;
 
             metadata.customName = nodes[i].data['customName'] || 'Unknown name';

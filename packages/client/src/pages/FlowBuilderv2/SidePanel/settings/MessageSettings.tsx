@@ -98,6 +98,22 @@ const MessageSettings: FC<SidePanelComponentProps<MessageNodeData>> = ({
     })();
   }, []);
 
+  useEffect(() => {
+    if (nodeData.connectionId) return;
+    if (!connectionList || connectionList.length !== 1) return;
+
+    setNodeData({
+      ...nodeData,
+      connectionId: connectionList[0].id,
+      connectionIosId:
+        templateType === MessageType.PUSH
+          ? connectionList[0].id
+          : nodeData.connectionIosId,
+      sendingOptionId:
+        connectionList[0]?.sendingOptions?.[0]?.id || nodeData.sendingOptionId,
+    });
+  }, [connectionList, nodeData.connectionId]);
+
   const getAllTemplates = async () => {
     const { data: templates } = await ApiService.get<{ data: Template[] }>({
       url: `${ApiConfig.getAllTemplates}`,
@@ -408,25 +424,64 @@ const MessageSettings: FC<SidePanelComponentProps<MessageNodeData>> = ({
         </>
       )}
 
-      <div className="flex gap-2.5 p-5 justify-between items-center font-inter font-normal text-[14px] leading-[22px]">
-        <div>Connection</div>
-        <div className="flex flex-col gap-[10px]">
-          <Select
-            className="w-[200px] min-h-[32px]"
-            buttonClassName="w-[200px] min-h-[32px]"
-            buttonInnerWrapperClassName="w-[200px] min-h-[32px]"
-            value={nodeData.connectionId}
-            onChange={(value) =>
-              setNodeData({ ...nodeData, connectionId: value })
-            }
-            options={connectionList.map((connection) => ({
-              key: connection.id,
-              title: connection.name,
-            }))}
-            placeholder="select connection"
-          />
+      {(templateType !== MessageType.PUSH ||
+        (templateType === MessageType.PUSH &&
+          (["All", PushPlatform.ANDROID] as (string | undefined)[]).includes(
+            nodeData.template.selected?.pushBuilder?.selectedPlatform
+          ))) && (
+        <div className="flex gap-2.5 p-5 justify-between items-center font-inter font-normal text-[14px] leading-[22px]">
+          <div>
+            {templateType === MessageType.PUSH
+              ? "Android connection"
+              : "Connection"}
+          </div>
+          <div className="flex flex-col gap-[10px]">
+            <Select
+              className="w-[200px] min-h-[32px]"
+              buttonClassName="w-[200px] min-h-[32px]"
+              buttonInnerWrapperClassName="w-[200px] min-h-[32px]"
+              value={nodeData.connectionId}
+              onChange={(value) =>
+                setNodeData({ ...nodeData, connectionId: value })
+              }
+              options={connectionList.map((connection) => ({
+                key: connection.id,
+                title: connection.name,
+              }))}
+              placeholder="select connection"
+            />
+          </div>
         </div>
-      </div>
+      )}
+
+      {templateType === MessageType.PUSH &&
+        (["All", PushPlatform.IOS] as (string | undefined)[]).includes(
+          nodeData.template.selected?.pushBuilder?.selectedPlatform
+        ) && (
+          <div className="flex gap-2.5 p-5 justify-between items-center font-inter font-normal text-[14px] leading-[22px]">
+            <div>
+              {templateType === MessageType.PUSH
+                ? "IOS connection"
+                : "Connection"}
+            </div>
+            <div className="flex flex-col gap-[10px]">
+              <Select
+                className="w-[200px] min-h-[32px]"
+                buttonClassName="w-[200px] min-h-[32px]"
+                buttonInnerWrapperClassName="w-[200px] min-h-[32px]"
+                value={nodeData.connectionIosId}
+                onChange={(value) =>
+                  setNodeData({ ...nodeData, connectionIosId: value })
+                }
+                options={connectionList.map((connection) => ({
+                  key: connection.id,
+                  title: connection.name,
+                }))}
+                placeholder="select connection"
+              />
+            </div>
+          </div>
+        )}
 
       {templateType === MessageType.EMAIL && (
         <div className="flex gap-2.5 p-5 justify-between items-center">

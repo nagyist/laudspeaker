@@ -236,6 +236,7 @@ export interface MessageNodeData<T extends MessageType = MessageType>
     };
   };
   connectionId?: string;
+  connectionIosId?: string;
   sendingOptionId?: string;
 }
 
