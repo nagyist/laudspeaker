@@ -63,6 +63,7 @@ import WorkspaceAccountSettings from "pages/WorkspaceAccountSettings";
 import WorkspaceDrawerLayout from "components/WorkspaceDrawerLayout";
 import WorkspaceOrganizationSettings from "pages/WorkspaceOrganizationSettings";
 import WorkspaceManage from "pages/WorkspaceManage";
+import Billing from "pages/Billing";
 
 interface IProtected {
   children: ReactElement;
@@ -305,6 +306,14 @@ const RouteComponent: React.FC = () => {
                 </DrawerLayout>
               </VerificationProtected>
             </Protected>
+          }
+        />
+        <Route
+          path="/billing"
+          element={
+            <DrawerLayout>
+              <Billing />
+            </DrawerLayout>
           }
         />
         <Route
