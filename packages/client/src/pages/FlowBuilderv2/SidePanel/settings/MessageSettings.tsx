@@ -45,6 +45,10 @@ const MessageSettings: FC<SidePanelComponentProps<MessageNodeData>> = ({
         sendingEmail: string;
         sendingName?: string;
       }[];
+      pushPlatforms?: {
+        Android?: object;
+        iOS: object;
+      };
     }[]
   >([]);
 
@@ -444,10 +448,16 @@ const MessageSettings: FC<SidePanelComponentProps<MessageNodeData>> = ({
               onChange={(value) =>
                 setNodeData({ ...nodeData, connectionId: value })
               }
-              options={connectionList.map((connection) => ({
-                key: connection.id,
-                title: connection.name,
-              }))}
+              options={connectionList
+                .filter((connection) =>
+                  templateType === MessageType.PUSH
+                    ? connection?.pushPlatforms?.Android
+                    : true
+                )
+                .map((connection) => ({
+                  key: connection.id,
+                  title: connection.name,
+                }))}
               placeholder="select connection"
             />
           </div>
@@ -473,10 +483,16 @@ const MessageSettings: FC<SidePanelComponentProps<MessageNodeData>> = ({
                 onChange={(value) =>
                   setNodeData({ ...nodeData, connectionIosId: value })
                 }
-                options={connectionList.map((connection) => ({
-                  key: connection.id,
-                  title: connection.name,
-                }))}
+                options={connectionList
+                  .filter((connection) =>
+                    templateType === MessageType.PUSH
+                      ? connection?.pushPlatforms?.iOS
+                      : true
+                  )
+                  .map((connection) => ({
+                    key: connection.id,
+                    title: connection.name,
+                  }))}
                 placeholder="select connection"
               />
             </div>
