@@ -130,7 +130,7 @@ export const workspaceDrawerItems: NavigationItem[] = [
     text: "Billing and plan",
     type: "menu",
     link: "/settings/workspace/billing",
-    disabled: true,
+    disabled: process.env.REACT_APP_BILLING_TAB_ENABLED !== "true",
   },
   {
     id: "organization",

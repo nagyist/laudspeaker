@@ -1,9 +1,12 @@
+import ExclamationCircleIcon from "assets/icons/ExclamationCircleIcon";
 import Button, { ButtonType } from "components/Elements/Buttonv2";
+import Modal from "components/Elements/Modalv2";
 import ProgressBar from "components/ProgressBar";
 import Table from "components/Tablev2";
 import { format } from "date-fns";
 import { capitalize } from "lodash";
 import React, { useState } from "react";
+import UpgradePlanAlert from "./Modals/UpgradePlanAlert";
 
 interface PlanUsageMetrics {
   name: string;
@@ -44,6 +47,7 @@ const Billing = () => {
       status: InvoiceStatus.PAID,
     },
   ]);
+  const [isUpgradePlanAlertOpen, setIsUpgradePlanAlertOpen] = useState(false);
 
   return (
     <div className="font-inter text-[14px] text-[#111827] font-normal leading-[22px] flex justify-center p-5">
@@ -168,6 +172,14 @@ const Billing = () => {
           </div>
         </div>
       </div>
+
+      <UpgradePlanAlert
+        isOpen={isUpgradePlanAlertOpen}
+        onClose={() => setIsUpgradePlanAlertOpen(false)}
+        onUpgrade={() => {
+          setIsUpgradePlanAlertOpen(false);
+        }}
+      />
     </div>
   );
 };
