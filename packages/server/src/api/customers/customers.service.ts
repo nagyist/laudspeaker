@@ -5464,9 +5464,14 @@ export class CustomersService {
     return { converted, error };
   }
 
-  async countCreateUpdateWithBatch(pk: string, data: any[]) {
+  async countCreateUpdateWithBatch(
+    pk: string,
+    workspaceId: string,
+    data: any[]
+  ) {
     const existing = await this.CustomerModel.find({
       [pk]: { $in: data },
+      workspaceId,
     }).exec();
 
     return {
@@ -5638,6 +5643,7 @@ export class CustomersService {
                     const { createdCount, updatedCount } =
                       await this.countCreateUpdateWithBatch(
                         passedPK.asAttribute.key,
+                        workspace.id,
                         Array.from(currentBatch)
                       );
                     created += createdCount;
@@ -5655,6 +5661,7 @@ export class CustomersService {
                   const { createdCount, updatedCount } =
                     await this.countCreateUpdateWithBatch(
                       passedPK.asAttribute.key,
+                      workspace.id,
                       Array.from(currentBatch)
                     );
                   created += createdCount;
