@@ -3488,8 +3488,13 @@ export class CustomersService {
         };
         break;
       case 'contains':
-        // doesnt seem to be working
-        query[key] = { $regex: new RegExp(value, 'i') };
+        query[key] =
+          valueType === 'Array'
+            ? {
+                $in: [value, +value, value === 'true' ? true : false],
+              }
+            : { $regex: new RegExp(`.*${value}.*`, 'i') };
+
         break;
       case 'does not contain':
         // doesnt seem to be working
@@ -5093,7 +5098,9 @@ export class CustomersService {
         ); //value;
       case 'contains':
         if (Array.isArray(customerValue)) {
-          return customerValue.includes(value);
+          return customerValue.includes(
+            this.correctValueType(valueType, value, account, session)
+          );
         }
         if (typeof customerValue === 'string' && typeof value === 'string') {
           return customerValue.includes(value);
