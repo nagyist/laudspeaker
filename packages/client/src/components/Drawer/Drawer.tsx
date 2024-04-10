@@ -77,6 +77,7 @@ const ResponsiveDrawer: FC<ResponsiveDrawerProps> = ({
             <div
               className="flex items-center gap-2.5 cursor-pointer"
               onClick={() => navigate("/home")}
+              data-testid="drawer-back-btn"
             >
               <div>
                 <svg

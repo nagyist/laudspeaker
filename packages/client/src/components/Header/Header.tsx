@@ -101,7 +101,10 @@ const Header: FC<HeaderProps> = ({ crumbs }) => {
         {(firstName || lastName || email) && (
           <Menu as="div" className="relative ml-3 z-auto">
             <div>
-              <Menu.Button className="bg-white hover:bg-[#F3F4F6] rounded h-[30px] flex items-center gap-[5px] p-1">
+              <Menu.Button
+                className="bg-white hover:bg-[#F3F4F6] rounded h-[30px] flex items-center gap-[5px] p-1"
+                data-testid="workspace-picker-btn"
+              >
                 <div className="font-robot text-[14px] font-normal leading-[22px] text-[#4B5563]">
                   {currentWorkspace?.name}
                 </div>
@@ -143,6 +146,7 @@ const Header: FC<HeaderProps> = ({ crumbs }) => {
                             active ? " bg-gray-100" : ""
                           }`}
                           onClick={() => updateCurrentWorkspace(workspace.id)}
+                          data-testid={`workspace-${i}`}
                         >
                           <div className="flex items-center gap-2.5">
                             <div
@@ -195,6 +199,7 @@ const Header: FC<HeaderProps> = ({ crumbs }) => {
                             active ? "bg-gray-100" : "",
                             "block p-2.5"
                           )}
+                          data-testid="manage-account-btn"
                         >
                           Manage account
                         </div>
@@ -209,6 +214,7 @@ const Header: FC<HeaderProps> = ({ crumbs }) => {
                           "block p-2.5 cursor-pointer"
                         )}
                         onClick={handleLogout}
+                        data-testid="logout-btn"
                       >
                         Log out
                       </div>
