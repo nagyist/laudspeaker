@@ -241,6 +241,21 @@ export class OrganizationService {
     session: string
   ) {
     const team = account.teams?.[0];
+
+    const organization = team.organization;
+    const plan = organization.plan;
+
+    const teamMembersCount = await this.accountRepository.countBy({
+      teams: { id: team.id },
+    });
+
+    if (teamMembersCount + 1 > plan.seatLimit) {
+      throw new HttpException(
+        'Seat limit has been exceeded',
+        HttpStatus.PAYMENT_REQUIRED
+      );
+    }
+
     const invite = await this.organizationInvitesRepository.findOne({
       where: {
         organization: {
@@ -264,6 +279,7 @@ export class OrganizationService {
         HttpStatus.BAD_REQUEST
       );
     }
+
     const queryRunner = await this.dataSource.createQueryRunner();
 
     try {

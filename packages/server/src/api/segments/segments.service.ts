@@ -438,6 +438,22 @@ export class SegmentsService {
     }
     const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
+    const organization = account.teams[0].organization;
+    const organizationPlan = organization.plan;
+
+    const segmentsCount = await this.segmentRepository.countBy({
+      workspace: {
+        id: In(organization.workspaces.map((workspace) => workspace.id)),
+      },
+    });
+
+    if (segmentsCount + 1 > organizationPlan.segmentLimit) {
+      throw new HttpException(
+        'Segment limit has been exceeded',
+        HttpStatus.PAYMENT_REQUIRED
+      );
+    }
+
     let err;
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
