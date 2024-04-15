@@ -1164,7 +1164,7 @@ export class CustomersService {
     transactionSession: ClientSession
   ): Promise<Correlation> {
     let customer: CustomerDocument; // Found customer
-    let queryParam = {
+    const queryParam = {
       workspaceId: workspace.id,
       $or: [
         { [dto.correlationKey]: dto.correlationValue },
@@ -1181,7 +1181,7 @@ export class CustomersService {
     if (!customer) {
       // When no customer is found with the given correlation, create a new one
       // If the correlationKey is '_id', use it to set the _id of the new customer
-      let newCustomerData: any = {
+      const newCustomerData: any = {
         workspaceId: workspace.id,
         createdAt: new Date(),
       };

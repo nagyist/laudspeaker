@@ -39,6 +39,7 @@ export class Organization extends BaseEntity {
   @OneToOne(() => OrganizationPlan, (organizationPlan) => organizationPlan.id, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
+    nullable: false,
   })
   public plan: OrganizationPlan;
 
@@ -51,6 +52,6 @@ export class Organization extends BaseEntity {
   @OneToOne(() => Account, (account) => account.id, { onDelete: 'CASCADE' })
   public owner: Account;
 
-  @Column({ nullable: true })
+  @Column()
   planId: string;
 }

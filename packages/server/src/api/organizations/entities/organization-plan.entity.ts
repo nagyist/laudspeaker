@@ -13,10 +13,10 @@ export class OrganizationPlan extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
   public id: string;
 
-  @JoinColumn()
   @OneToOne(() => Organization, (organization) => organization.id, {
     onDelete: 'CASCADE',
     onUpdate: 'CASCADE',
+    nullable: false,
   })
   public organization: Organization;
 
@@ -37,7 +37,4 @@ export class OrganizationPlan extends BaseEntity {
 
   @Column({ default: 0 })
   workspaceLimit: number;
-
-  @Column({ nullable: true })
-  organizationId: string;
 }
