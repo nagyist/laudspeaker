@@ -28,6 +28,7 @@ import ResetPassword from "pages/ResetPassword";
 import ModalBuilder from "pages/ModalBuilder";
 import WebhookBuilder from "pages/WebhookBuilder";
 import EventTracker from "pages/EventTracker";
+import MessageTracker from "pages/MessageTracker";
 import ModalBackgroundProvider from "pages/ModalBuilder/ModalBackgroundProvider";
 import FlowBuilderv2 from "pages/FlowBuilderv2";
 import FlowViewerv2 from "pages/FlowViewerv2";
@@ -378,6 +379,18 @@ const RouteComponent: React.FC = () => {
               <VerificationProtected>
                 <DrawerLayout>
                   <EventTracker />
+                </DrawerLayout>
+              </VerificationProtected>
+            </Protected>
+          }
+        />
+        <Route
+          path="/message-tracker"
+          element={
+            <Protected>
+              <VerificationProtected>
+                <DrawerLayout>
+                  <MessageTracker />
                 </DrawerLayout>
               </VerificationProtected>
             </Protected>
