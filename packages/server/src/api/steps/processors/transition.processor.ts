@@ -60,6 +60,7 @@ import { Workspaces } from '@/api/workspaces/entities/workspaces.entity';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Cache } from 'cache-manager';
 import { JourneyLocation } from '@/api/journeys/entities/journey-location.entity';
+import { OrganizationService } from '@/api/organizations/organizations.service';
 
 @Injectable()
 @Processor('transition', {
@@ -99,6 +100,8 @@ export class TransitionProcessor extends WorkerHost {
     @Inject(JourneyLocationsService)
     private journeyLocationsService: JourneyLocationsService,
     @Inject(StepsService) private stepsService: StepsService,
+    @Inject(OrganizationService)
+    private organizationService: OrganizationService,
     @Inject(CACHE_MANAGER) private cacheManager: Cache
   ) {
     super();
@@ -573,7 +576,10 @@ export class TransitionProcessor extends WorkerHost {
     event?: string
   ) {
     let job;
-    const workspace = owner.teams?.[0]?.organization?.workspaces?.[0];
+    const organization = owner.teams[0].organization;
+    const workspace = organization.workspaces?.[0];
+
+    await this.organizationService.checkOrganizationMessageLimit(organization);
 
     // Rate limiting and sending quiet hours will be stored here
     type MessageSendType =

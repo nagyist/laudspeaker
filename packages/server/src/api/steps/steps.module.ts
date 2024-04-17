@@ -32,6 +32,7 @@ import { JourneyLocation } from '../journeys/entities/journey-location.entity';
 import { JourneysModule } from '../journeys/journeys.module';
 import { Workspaces } from '../workspaces/entities/workspaces.entity';
 import { Requeue } from './entities/requeue.entity';
+import { OrganizationsModule } from '../organizations/organizations.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { Requeue } from './entities/requeue.entity';
     forwardRef(() => WebsocketsModule),
     forwardRef(() => RedlockModule),
     forwardRef(() => JourneysModule),
+    forwardRef(() => OrganizationsModule),
     SlackModule,
   ],
   providers: [

@@ -32,12 +32,14 @@ import {
 import onboardingJourneyFixtures from './onboarding-journey';
 import { StepsService } from '../steps/steps.service';
 import { StepType } from '../steps/types/step.interface';
-import { randomUUID } from 'crypto';
 import admin from 'firebase-admin';
-import { update } from 'lodash';
 import { Workspaces } from '../workspaces/entities/workspaces.entity';
 import { Organization } from '../organizations/entities/organization.entity';
 import { OrganizationTeam } from '../organizations/entities/organization-team.entity';
+import {
+  DEFAULT_PLAN,
+  OrganizationPlan,
+} from '../organizations/entities/organization-plan.entity';
 
 @Injectable()
 export class AccountsService extends BaseJwtHelper {
@@ -619,11 +621,16 @@ export class AccountsService extends BaseJwtHelper {
         await queryRunner.connect();
         await queryRunner.startTransaction();
 
+        const plan = await queryRunner.manager.save(OrganizationPlan, {
+          ...DEFAULT_PLAN,
+        });
+
         const organization = await queryRunner.manager.create(Organization, {
           companyName: 'OnboardingOrg',
           owner: {
             id: account.id,
           },
+          plan: { id: plan.id },
         });
         await queryRunner.manager.save(organization);
 

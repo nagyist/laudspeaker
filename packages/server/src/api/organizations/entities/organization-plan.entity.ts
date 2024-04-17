@@ -8,6 +8,15 @@ import {
 } from 'typeorm';
 import { Organization } from './organization.entity';
 
+export const DEFAULT_PLAN: Partial<OrganizationPlan> = {
+  segmentLimit: 100,
+  activeJourneyLimit: 100,
+  messageLimit: 100000000,
+  customerLimit: 10000000,
+  seatLimit: 100,
+  workspaceLimit: 20,
+};
+
 @Entity()
 export class OrganizationPlan extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -20,21 +29,21 @@ export class OrganizationPlan extends BaseEntity {
   })
   public organization: Organization;
 
-  @Column({ default: 0 })
+  @Column({ default: DEFAULT_PLAN.segmentLimit })
   segmentLimit: number;
 
-  @Column({ default: 0 })
+  @Column({ default: DEFAULT_PLAN.activeJourneyLimit })
   activeJourneyLimit: number;
 
-  @Column({ default: 0 })
+  @Column({ default: DEFAULT_PLAN.messageLimit })
   messageLimit: number;
 
-  @Column({ default: 0 })
+  @Column({ default: DEFAULT_PLAN.customerLimit })
   customerLimit: number;
 
-  @Column({ default: 0 })
+  @Column({ default: DEFAULT_PLAN.seatLimit })
   seatLimit: number;
 
-  @Column({ default: 0 })
+  @Column({ default: DEFAULT_PLAN.workspaceLimit })
   workspaceLimit: number;
 }
