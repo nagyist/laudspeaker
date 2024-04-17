@@ -64,11 +64,12 @@ import { OrganizationService } from '@/api/organizations/organizations.service';
 
 @Injectable()
 @Processor('transition', {
-  removeOnComplete: { count: 100000 },
   metrics: {
-    maxDataPoints: MetricsTime.ONE_HOUR,
+    maxDataPoints: MetricsTime.ONE_WEEK,
   },
-  concurrency: 5,
+  concurrency: process.env.TRANSITION_PROCESSOR_CONCURRENCY
+    ? +process.env.TRANSITION_PROCESSOR_CONCURRENCY
+    : 1,
 })
 export class TransitionProcessor extends WorkerHost {
   private phClient = new PostHog('RxdBl8vjdTwic7xTzoKTdbmeSC1PCzV6sw-x-FKSB-k');
@@ -704,9 +705,15 @@ export class TransitionProcessor extends WorkerHost {
       }
     }
 
+    let template: Template = await this.cacheManager.get(
+      `template:${step.metadata.template}`
+    );
+
     if (
       messageSendType === 'SEND' &&
-      process.env.MOCK_MESSAGE_SEND === 'true'
+      process.env.MOCK_MESSAGE_SEND === 'true' &&
+      template &&
+      !template.webhookData
     ) {
       // 3. CHECK IF MESSAGE SEND SHOULD BE MOCKED
       messageSendType = 'MOCK_SEND';
@@ -714,9 +721,7 @@ export class TransitionProcessor extends WorkerHost {
 
     if (messageSendType === 'SEND') {
       //send message here
-      let template: Template = await this.cacheManager.get(
-        `template:${step.metadata.template}`
-      );
+
       if (!template) {
         template = await this.templatesService.lazyFindByID(
           step.metadata.template
