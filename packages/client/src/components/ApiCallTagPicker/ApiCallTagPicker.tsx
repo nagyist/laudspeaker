@@ -96,7 +96,14 @@ const ApiCallTagPicker: FC<ApiCallTagPickerProps> = ({
 
   return (
     <>
-      <span className="h-full" onClick={() => setIsWebhookModalOpen(true)}>
+      <span
+        className="h-full"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsWebhookModalOpen(true);
+        }}
+      >
         <Chip
           label={
             webhookState && webhookProps
@@ -109,33 +116,35 @@ const ApiCallTagPicker: FC<ApiCallTagPickerProps> = ({
       <Modal
         isOpen={isWebhookModalOpen}
         onClose={() => setIsWebhookModalOpen(false)}
-        panelClass="min-w-[90vw]"
+        panelClass="min-w-[800px]"
       >
-        <div className="py-5 px-[15px] outline-none max-h-[75vh] overflow-y-scroll flex justify-center items-center">
-          <div className="w-[490px] max-h-[75vh]">
+        <div className="py-5 px-[15px] outline-none h-[400px] flex justify-center items-center">
+          <div className="w-fit h-full">
             <div className="w-full flex justify-end items-center">
               <SlackTemplateHeader
                 onPersonalizeClick={onPersonalizeClick}
                 onAddTemplateClick={onAddTemplateClick}
               />
             </div>
-            <WebhookSettings
-              webhookState={webhookState}
-              setWebhookState={setWebhookState}
-              webhookProps={webhookProps}
-              setWebhookProps={setWebhookProps}
-              urlRef={urlRef}
-              bearerTokenRef={bearerTokenRef}
-              basicUserNameRef={basicUserNameRef}
-              basicPasswordRef={basicPasswordRef}
-              customHeaderKeyRef={customHeaderKeyRef}
-              customHeaderValueRef={customHeaderValueRef}
-              bodyRef={bodyRef}
-              headersRef={headersRef}
-              setSelectedRef={setSelectedRef}
-              selectedRef={selectedRef}
-              setSelectedRefValueSetter={setSelectedRefValueSetter}
-            />
+            <div className="h-full">
+              <WebhookSettings
+                webhookState={webhookState}
+                setWebhookState={setWebhookState}
+                webhookProps={webhookProps}
+                setWebhookProps={setWebhookProps}
+                urlRef={urlRef}
+                bearerTokenRef={bearerTokenRef}
+                basicUserNameRef={basicUserNameRef}
+                basicPasswordRef={basicPasswordRef}
+                customHeaderKeyRef={customHeaderKeyRef}
+                customHeaderValueRef={customHeaderValueRef}
+                bodyRef={bodyRef}
+                headersRef={headersRef}
+                setSelectedRef={setSelectedRef}
+                selectedRef={selectedRef}
+                setSelectedRefValueSetter={setSelectedRefValueSetter}
+              />
+            </div>
           </div>
         </div>
       </Modal>

@@ -952,7 +952,7 @@ export class TemplatesService extends QueueEventsHost {
     webhookData: WebhookData,
     filteredTags: { [key: string]: any } = {}
   ) {
-    const { method, retries, fallBackAction } = webhookData;
+    const { method, retries, fallBackAction, mimeType } = webhookData;
 
     let { body, headers, url } = webhookData;
 
@@ -993,6 +993,8 @@ export class TemplatesService extends QueueEventsHost {
         ])
       )
     );
+
+    headers['content-type'] = mimeType;
 
     let retriesCount = 0;
     let success = false;

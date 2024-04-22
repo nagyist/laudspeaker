@@ -524,8 +524,8 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
       <div
         className={`h-full flex flex-col md:flex-row w-full m-auto font-inter ${className}`}
       >
-        <div className="h-full w-full md:w-[380px] overflow-y-hidden break-words order-2  md:order-1">
-          <div className="h-[calc(100%-40px)] bg-white m-5 p-5">
+        <div className="h-full w-full md:w-[380px] overflow-y-hidden break-words order-2 md:order-1">
+          <div className="h-full overflow-y-scroll overflow-hidden bg-white m-5 p-5">
             {isValidURL ? (
               <div className="whitespace-pre-line">{rawRequest}</div>
             ) : (
@@ -596,14 +596,9 @@ const WebhookSettings: FC<WebhookSettingsProps> = ({
                           name="webhookProps"
                           id="webhookProps"
                           value={webhookProps}
-                          onChange={(e) => {
-                            const event =
-                              e as unknown as React.ChangeEvent<HTMLInputElement>;
-                            if (
-                              /^response\..*/.test(event.target.value) &&
-                              setWebhookProps
-                            )
-                              setWebhookProps(event.target.value);
+                          onChange={(value) => {
+                            if (/^response\..*/.test(value) && setWebhookProps)
+                              setWebhookProps(value);
                           }}
                         />
                       </div>

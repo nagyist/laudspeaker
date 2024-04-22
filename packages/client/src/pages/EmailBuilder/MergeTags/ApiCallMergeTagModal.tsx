@@ -92,9 +92,9 @@ const ApiCallMergeTagModal: FC<ApiCallMergeTagModalProps> = ({
   }, [webhookState, webhookProps, handleUpdateTag]);
 
   return (
-    <Modal isOpen={true} onClose={onClose} panelClass="min-w-[90vw]">
-      <div className="py-5 px-[15px] outline-none max-h-[75vh] overflow-y-scroll flex justify-center items-center">
-        <div className="w-[490px] max-h-[75vh]">
+    <Modal isOpen={true} onClose={onClose} panelClass="min-w-[800px]">
+      <div className="py-5 px-[15px] outline-none h-[400px] flex justify-center items-center">
+        <div className="w-fit h-full">
           <div className="w-full flex justify-end items-center">
             <SlackTemplateHeader
               onPersonalizeClick={onPersonalizeClick}
