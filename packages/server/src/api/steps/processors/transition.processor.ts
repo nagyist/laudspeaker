@@ -709,6 +709,17 @@ export class TransitionProcessor extends WorkerHost {
       `template:${step.metadata.template}`
     );
 
+    if (!template) {
+      template = await this.templatesService.lazyFindByID(
+        step.metadata.template
+      );
+      await this.cacheManager.set(
+        `template:${step.metadata.destination}`,
+        template,
+        5000
+      );
+    }
+
     if (
       messageSendType === 'SEND' &&
       process.env.MOCK_MESSAGE_SEND === 'true' &&
@@ -722,15 +733,6 @@ export class TransitionProcessor extends WorkerHost {
     if (messageSendType === 'SEND') {
       //send message here
 
-      if (!template) {
-        template = await this.templatesService.lazyFindByID(
-          step.metadata.template
-        );
-        await this.cacheManager.set(
-          `template:${step.metadata.destination}`,
-          template
-        );
-      }
       const { email } = owner;
 
       const {
@@ -753,7 +755,7 @@ export class TransitionProcessor extends WorkerHost {
 
       const { _id, workspaceId, workflows, journeys, ...tags } = customer;
       const filteredTags = cleanTagsForSending(tags);
-      const sender = new MessageSender(this.accountRepository);
+      const sender = new MessageSender(this.logger, this.accountRepository);
 
       switch (template.type) {
         case TemplateType.EMAIL:
@@ -803,6 +805,7 @@ export class TransitionProcessor extends WorkerHost {
             tags: filteredTags,
             templateID: template.id,
             eventProvider: workspace.emailProvider,
+            session,
           });
           this.debug(
             `${JSON.stringify(ret)}`,
@@ -832,12 +835,14 @@ export class TransitionProcessor extends WorkerHost {
                   deviceToken: customer.androidDeviceToken,
                   pushTitle: template.pushObject.settings.Android.title,
                   pushText: template.pushObject.settings.Android.description,
+                  kvPairs: template.pushObject.fields,
                   trackingEmail: email,
                   filteredTags: filteredTags,
                   templateID: template.id,
                   quietHours: journey.journeySettings.quietHours.enabled
                     ? journey.journeySettings?.quietHours
                     : undefined,
+                  session,
                 }),
                 session
               );
@@ -851,12 +856,14 @@ export class TransitionProcessor extends WorkerHost {
                   deviceToken: customer.iosDeviceToken,
                   pushTitle: template.pushObject.settings.iOS.title,
                   pushText: template.pushObject.settings.iOS.description,
+                  kvPairs: template.pushObject.fields,
                   trackingEmail: email,
                   filteredTags: filteredTags,
                   templateID: template.id,
                   quietHours: journey.journeySettings.quietHours.enabled
                     ? journey.journeySettings?.quietHours
                     : undefined,
+                  session,
                 }),
                 session
               );
@@ -872,12 +879,14 @@ export class TransitionProcessor extends WorkerHost {
                   deviceToken: customer.iosDeviceToken,
                   pushTitle: template.pushObject.settings.iOS.title,
                   pushText: template.pushObject.settings.iOS.description,
+                  kvPairs: template.pushObject.fields,
                   trackingEmail: email,
                   filteredTags: filteredTags,
                   templateID: template.id,
                   quietHours: journey.journeySettings.quietHours.enabled
                     ? journey.journeySettings?.quietHours
                     : undefined,
+                  session,
                 }),
                 session
               );
@@ -895,11 +904,13 @@ export class TransitionProcessor extends WorkerHost {
                   pushTitle: template.pushObject.settings.Android.title,
                   pushText: template.pushObject.settings.Android.description,
                   trackingEmail: email,
+                  kvPairs: template.pushObject.fields,
                   filteredTags: filteredTags,
                   templateID: template.id,
                   quietHours: journey.journeySettings.quietHours.enabled
                     ? journey.journeySettings?.quietHours
                     : undefined,
+                  session,
                 }),
                 session
               );
@@ -937,6 +948,7 @@ export class TransitionProcessor extends WorkerHost {
                   filteredTags
                 ),
               },
+              session,
             }),
             session
           );
@@ -959,6 +971,7 @@ export class TransitionProcessor extends WorkerHost {
               to: customer.phPhoneNumber || customer.phone,
               token: workspace.smsAuthToken,
               trackingEmail: email,
+              session,
             }),
             session
           );
@@ -1087,17 +1100,21 @@ export class TransitionProcessor extends WorkerHost {
       return;
     }
 
-    let nextStep: Step = await this.cacheManager.get(
-      `step:${step.metadata.destination}`
-    );
-    if (!nextStep) {
-      nextStep = await this.stepsService.lazyFindByID(
-        step.metadata.destination
+    let nextStep: Step;
+
+    if(step.metadata.destination) {
+      nextStep = await this.cacheManager.get(
+        `step:${step.metadata.destination}`
       );
-      await this.cacheManager.set(
-        `step:${step.metadata.destination}`,
-        nextStep
-      );
+      if (!nextStep) {
+        nextStep = await this.stepsService.lazyFindByID(
+          step.metadata.destination
+        );
+        await this.cacheManager.set(
+          `step:${step.metadata.destination}`,
+          nextStep
+        );
+      }
     }
 
     if (nextStep) {
