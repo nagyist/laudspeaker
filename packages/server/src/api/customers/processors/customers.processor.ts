@@ -160,7 +160,7 @@ export class CustomerChangeProcessor extends WorkerHost {
     const clientSession = await this.connection.startSession();
     await clientSession.startTransaction();
     try {
-      const messStr = job.data.changeMessage.message.value.toString();
+      const messStr = JSON.stringify(job.data.changeMessage.message.value);
       let message: ChangeStreamDocument<Customer> = JSON.parse(messStr);
       if (typeof message === 'string') {
         message = JSON.parse(message); //double parse if kafka record is published as string not object

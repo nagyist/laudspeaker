@@ -28,6 +28,7 @@ import { JourneyLocation } from '../journeys/entities/journey-location.entity';
 import { SegmentsService } from '../segments/segments.service';
 import { Segment } from '../segments/entities/segment.entity';
 import { SegmentCustomers } from '../segments/entities/segment-customers.entity';
+import { CustomerChangeProcessor } from './processors/customers.processor';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { SegmentCustomers } from '../segments/entities/segment-customers.entity'
     S3Service,
     ImportProcessor,
     JourneyLocationsService,
+    CustomerChangeProcessor,
   ],
 
   exports: [CustomersService, CustomersConsumerService],
