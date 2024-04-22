@@ -568,6 +568,12 @@ export class SegmentsService {
     const segment = await this.findOne(account, id, session);
     const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
+    if (segment.isUpdating) {
+      throw new BadRequestException(
+        'The segment is still updating. Please, try later'
+      );
+    }
+
     await this.segmentRepository.update(
       { id, workspace: { id: workspace.id } },
       { ...updateSegmentDTO, workspace: { id: workspace.id } }
