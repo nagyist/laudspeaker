@@ -14,8 +14,11 @@ import { WebClient } from '@slack/web-api';
 import { Account } from '@/api/accounts/entities/accounts.entity';
 import { Repository } from 'typeorm';
 import { Resend } from 'resend';
+import { MIMEType } from '@/api/templates/entities/template.entity';
 import { randomUUID } from 'crypto';
 import { Workspace } from '@/api/workspaces/entities/workspace.entity';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
+import { Inject, Logger } from '@nestjs/common';
 
 export enum MessageType {
   SMS = 'sms',
@@ -28,6 +31,8 @@ export enum MessageType {
 }
 
 export class MessageSender {
+  private logger = new Logger(MessageSender.name);
+
   private client: WebClient = new WebClient();
   private MAXIMUM_SMS_LENGTH = 1600;
   private MAXIMUM_PUSH_LENGTH = 256;
@@ -56,7 +61,8 @@ export class MessageSender {
         job.email,
         job.domain,
         job.trackingEmail,
-        job.cc
+        job.cc,
+        job.session
       );
     },
     [MessageType.SMS]: async (job) => {
@@ -71,7 +77,8 @@ export class MessageSender {
         job.customerID,
         job.templateID,
         job.workspaceID,
-        job.trackingEmail
+        job.trackingEmail,
+        job.session
       );
     },
     [MessageType.IOS]: async (job) => {
@@ -86,7 +93,9 @@ export class MessageSender {
         job.stepID,
         job.filteredTags,
         job.workspaceID,
-        job.quietHours
+        job.quietHours,
+        job.kvPairs,
+        job.session
       );
     },
     [MessageType.ANDROID]: async (job) => {
@@ -101,7 +110,9 @@ export class MessageSender {
         job.stepID,
         job.filteredTags,
         job.workspaceID,
-        job.quietHours
+        job.quietHours,
+        job.kvPairs,
+        job.session
       );
     },
     [MessageType.SLACK]: async (job) => {
@@ -125,6 +136,65 @@ export class MessageSender {
 
   constructor(private workspacesRepository: Repository<Workspace>) {
     this.workspacesRepository = workspacesRepository;
+  }
+
+  log(message, method, session, user = 'ANONYMOUS') {
+    this.logger.log(
+      message,
+      JSON.stringify({
+        class: MessageSender.name,
+        method: method,
+        session: session,
+        user: user,
+      })
+    );
+  }
+  debug(message, method, session, user = 'ANONYMOUS') {
+    this.logger.debug(
+      message,
+      JSON.stringify({
+        class: MessageSender.name,
+        method: method,
+        session: session,
+        user: user,
+      })
+    );
+  }
+  warn(message, method, session, user = 'ANONYMOUS') {
+    this.logger.warn(
+      message,
+      JSON.stringify({
+        class: MessageSender.name,
+        method: method,
+        session: session,
+        user: user,
+      })
+    );
+  }
+  error(error, method, session, user = 'ANONYMOUS') {
+    this.logger.error(
+      error.message,
+      error.stack,
+      JSON.stringify({
+        class: MessageSender.name,
+        method: method,
+        session: session,
+        cause: error.cause,
+        name: error.name,
+        user: user,
+      })
+    );
+  }
+  verbose(message, method, session, user = 'ANONYMOUS') {
+    this.logger.verbose(
+      message,
+      JSON.stringify({
+        class: MessageSender.name,
+        method: method,
+        session: session,
+        user: user,
+      })
+    );
   }
 
   async process(job: any): Promise<ClickHouseMessage[]> {
@@ -165,7 +235,8 @@ export class MessageSender {
     email?: string,
     domain?: string,
     trackingEmail?: string,
-    cc?: string[]
+    cc?: string[],
+    session?: string
   ): Promise<ClickHouseMessage[]> {
     if (!to) {
       return;
@@ -230,6 +301,17 @@ export class MessageSender {
             },
           ],
         });
+        this.log(
+          `${JSON.stringify({
+            message: 'Email sent via: ' + eventProvider,
+            result: sendgridMessage,
+            to,
+            subjectWithInsertedTags,
+          })}}`,
+          this.handleEmail.name,
+          session,
+          workspace.id
+        );
         msg = sendgridMessage;
         ret = [
           {
@@ -272,6 +354,17 @@ export class MessageSender {
             },
           ],
         });
+        this.log(
+          `${JSON.stringify({
+            message: 'Email sent via: ' + eventProvider,
+            result: resendMessage,
+            to,
+            subjectWithInsertedTags,
+          })}}`,
+          this.handleEmail.name,
+          session,
+          workspace.id
+        );
         msg = resendMessage;
         ret = [
           {
@@ -302,6 +395,17 @@ export class MessageSender {
           'v:templateId': templateID,
           'v:workspaceId': workspace.id,
         });
+        this.log(
+          `${JSON.stringify({
+            message: 'Email sent via: ' + eventProvider,
+            result: mailgun,
+            to,
+            subjectWithInsertedTags,
+          })}}`,
+          this.handleEmail.name,
+          session,
+          workspace.id
+        );
         msg = mailgunMessage;
         ret = [
           {
@@ -363,7 +467,8 @@ export class MessageSender {
     customerID: string,
     templateID: string,
     workspaceID: string,
-    trackingEmail: string
+    trackingEmail: string,
+    session: string
   ): Promise<ClickHouseMessage[]> {
     if (!to) {
       return;
@@ -404,6 +509,18 @@ export class MessageSender {
       to: to,
       statusCallback: `${process.env.TWILIO_WEBHOOK_ENDPOINT}?stepId=${stepID}&customerId=${customerID}&templateId=${templateID}`,
     });
+    this.log(
+      `${JSON.stringify({
+        message: 'SMS sent via: Twilio',
+        result: message,
+        from,
+        to,
+        body: textWithInsertedTags?.slice(0, this.MAXIMUM_SMS_LENGTH),
+      })}}`,
+      this.handleSMS.name,
+      session,
+      workspace.id
+    );
     ret = [
       {
         stepId: stepID,
@@ -457,7 +574,9 @@ export class MessageSender {
     stepID: string,
     filteredTags: any,
     workspaceID: string,
-    quietHours: any
+    quietHours: any,
+    kvPairs: { key: string; value: string }[],
+    session: string
   ): Promise<ClickHouseMessage[]> {
     if (!iosDeviceToken) {
       return;
@@ -526,14 +645,16 @@ export class MessageSender {
 
     const messaging = admin.messaging(firebaseApp);
 
-    let data = {
+    const data = {
       stepID,
       customerID,
       messageID: randomUUID(),
       templateID: templateID.toString(),
       workspaceID: workspace.id,
     };
-
+    for (const kvPair of kvPairs) {
+      data[kvPair.key] = kvPair.value;
+    }
     if (quietHours) data['quietHours'] = JSON.stringify(quietHours);
 
     const messageId = await messaging.send({
@@ -562,7 +683,18 @@ export class MessageSender {
         },
       },
     });
-
+    this.log(
+      `${JSON.stringify({
+        message: 'iOS Push sent via: Firebase',
+        token: iosDeviceToken,
+        result: messageId,
+        title: titleWithInsertedTags.slice(0, this.MAXIMUM_PUSH_TITLE_LENGTH),
+        body: textWithInsertedTags.slice(0, this.MAXIMUM_PUSH_LENGTH),
+      })}}`,
+      this.handleIOS.name,
+      session,
+      workspace.id
+    );
     ret = [
       {
         stepId: stepID,
@@ -616,7 +748,9 @@ export class MessageSender {
     stepID: string,
     filteredTags: any,
     workspaceID: string,
-    quietHours: any
+    quietHours: any,
+    kvPairs: { key: string; value: string }[],
+    session: string
   ): Promise<ClickHouseMessage[]> {
     if (!androidDeviceToken) {
       return;
@@ -693,6 +827,9 @@ export class MessageSender {
       messageID: randomUUID(),
       sound: 'default',
     };
+    for (const kvPair of kvPairs) {
+      data[kvPair.key] = kvPair.value;
+    }
 
     if (quietHours) data['quietHours'] = JSON.stringify(quietHours);
 
@@ -714,6 +851,18 @@ export class MessageSender {
         },
       },
     });
+    this.log(
+      `${JSON.stringify({
+        message: 'Android Push sent via: Firebase',
+        token: androidDeviceToken,
+        result: messageId,
+        title: titleWithInsertedTags.slice(0, this.MAXIMUM_PUSH_TITLE_LENGTH),
+        body: textWithInsertedTags.slice(0, this.MAXIMUM_PUSH_LENGTH),
+      })}}`,
+      this.handleAndroid.name,
+      session,
+      workspace.id
+    );
     ret = [
       {
         stepId: stepID,
@@ -811,10 +960,15 @@ export class MessageSender {
    * @param filteredTags
    * @returns
    */
-  // async handleWebhook(webhookData: any, filteredTags: any): Promise<ClickHouseMessage[]> {
+  // async handleWebhook(
+  //   webhookData: any,
+  //   filteredTags: any
+  // ): Promise<ClickHouseMessage[]> {
   //   const { method, retries, fallBackAction } = webhookData;
 
-  //   let { body, headers, url } = webhookData;
+  //   let { body, headers, url, mimeType } = webhookData;
+
+  //   mimeType ||= MIMEType.JSON;
 
   //   url = await this.tagEngine.parseAndRender(url, filteredTags || {}, {
   //     strictVariables: true,
@@ -853,6 +1007,8 @@ export class MessageSender {
   //       ])
   //     )
   //   );
+
+  //   if (body) headers['Content-Type'] = mimeType;
 
   //   let retriesCount = 0;
   //   let success = false;
@@ -895,8 +1051,7 @@ export class MessageSender {
   //           processed: false,
   //         },
   //       ]);
-  //     } catch (e) {
-  //     }
+  //     } catch (e) {}
 
   //     throw new Error(error);
   //   } else {
@@ -914,8 +1069,7 @@ export class MessageSender {
   //           processed: false,
   //         },
   //       ]);
-  //     } catch (e) {
-  //     }
+  //     } catch (e) {}
   //   }
 
   //   return { url, body, headers };

@@ -76,9 +76,13 @@ import {
   ClickHouseMessage,
   WebhooksService,
 } from '../webhooks/webhooks.service';
+import { Liquid } from 'liquidjs';
+import { cleanTagsForSending } from '@/shared/utils/helpers';
 
 @Injectable()
 export class EventsService {
+  private tagEngine = new Liquid();
+
   constructor(
     private dataSource: DataSource,
     @Inject(forwardRef(() => CustomersService))
@@ -847,14 +851,7 @@ export class EventsService {
   }
 
   async sendTestPushByCustomer(account: Account, body: CustomerPushTest) {
-    const foundAcc = await this.accountsRepository.findOne({
-      where: {
-        id: account.id,
-      },
-      relations: ['teams.organization.workspaces', 'currentWorkspace'],
-    });
-
-    const workspace = foundAcc.currentWorkspace;
+    const workspace = account.currentWorkspace;
 
     const hasConnected = Object.values(workspace.pushPlatforms).some(
       (el) => !!el
@@ -872,12 +869,9 @@ export class EventsService {
       body.customerId
     );
 
-    if (
-      (!customer.androidFCMTokens || customer.androidFCMTokens.length === 0) &&
-      (!customer.iosFCMTokens || customer.iosFCMTokens.length === 0)
-    ) {
+    if (!customer.androidDeviceToken && !customer.iosDeviceToken) {
       throw new HttpException(
-        "Selected customer don't have androidFCMTokens nor iosFCMTokens.",
+        "Selected customer don't have androidDeviceToken nor iosDeviceToken.",
         HttpStatus.NOT_ACCEPTABLE
       );
     }
@@ -898,21 +892,17 @@ export class EventsService {
 
           if (
             platform === PushPlatforms.ANDROID &&
-            (!customer.androidFCMTokens ||
-              customer.androidFCMTokens.length === 0)
+            !customer.androidDeviceToken
           ) {
             this.logger.warn(
-              `Customer ${body.customerId} don't have androidDeviceToken to test push notification. Skipping.`
+              `Customer ${body.customerId} don't have androidDeviceToken property to test push notification. Skipping.`
             );
             return;
           }
 
-          if (
-            platform === PushPlatforms.IOS &&
-            (!customer.iosFCMTokens || customer.iosFCMTokens.length === 0)
-          ) {
+          if (platform === PushPlatforms.IOS && !customer.iosDeviceToken) {
             this.logger.warn(
-              `Customer ${body.customerId} don't have iosDeviceToken to test push notification. Skipping.`
+              `Customer ${body.customerId} don't have iosDeviceToken property to test push notification. Skipping.`
             );
             return;
           }
@@ -920,7 +910,7 @@ export class EventsService {
           const settings: PlatformSettings = body.pushObject.settings[platform];
           let firebaseApp;
           try {
-            firebaseApp = admin.app(foundAcc.id + ';;' + platform);
+            firebaseApp = admin.app(account.id + ';;' + platform);
           } catch (e: any) {
             if (e.code == 'app/no-app') {
               firebaseApp = admin.initializeApp(
@@ -929,7 +919,7 @@ export class EventsService {
                     workspace.pushPlatforms[platform].credentials
                   ),
                 },
-                `${foundAcc.id};;${platform}`
+                `${account.id};;${platform}`
               );
             } else {
               throw new HttpException(
@@ -939,52 +929,63 @@ export class EventsService {
             }
           }
 
+          const { _id, workspaceId, workflows, ...tags } = customer.toObject();
+          const filteredTags = cleanTagsForSending(tags);
+
           const messaging = admin.messaging(firebaseApp);
 
-          const tokenStorage =
-            platform === PushPlatforms.ANDROID
-              ? customer.androidFCMTokens
-              : customer.iosFCMTokens;
-
-          for (const token of tokenStorage) {
-            await messaging.send({
-              token,
-              notification: {
-                title: settings.title,
-                body: settings.description,
-              },
-              android:
-                platform === PushPlatforms.ANDROID
-                  ? {
-                      notification: {
+          await messaging.send({
+            token:
+              platform === PushPlatforms.ANDROID
+                ? customer.androidDeviceToken
+                : customer.iosDeviceToken,
+            notification: {
+              title: await this.tagEngine.parseAndRender(
+                settings.title,
+                filteredTags || {},
+                {
+                  strictVariables: true,
+                }
+              ),
+              body: await this.tagEngine.parseAndRender(
+                settings.description,
+                filteredTags || {},
+                {
+                  strictVariables: true,
+                }
+              ),
+            },
+            android:
+              platform === PushPlatforms.ANDROID
+                ? {
+                    notification: {
+                      sound: 'default',
+                      imageUrl: settings?.image?.imageSrc,
+                    },
+                  }
+                : undefined,
+            apns:
+              platform === PushPlatforms.IOS
+                ? {
+                    payload: {
+                      aps: {
+                        badge: 1,
                         sound: 'default',
-                        imageUrl: settings?.image?.imageSrc,
+                        category: settings.clickBehavior?.type,
+                        contentAvailable: true,
+                        mutableContent: true,
                       },
-                    }
-                  : undefined,
-              apns:
-                platform === PushPlatforms.IOS
-                  ? {
-                      payload: {
-                        aps: {
-                          badge: 1,
-                          sound: 'default',
-                          category: settings.clickBehavior?.type,
-                          contentAvailable: true,
-                          mutableContent: true,
-                        },
-                      },
-                      fcmOptions: {
-                        imageUrl: settings?.image?.imageSrc,
-                      },
-                    }
-                  : undefined,
-              data: body.pushObject.fields.reduce((acc, field) => {
-                acc[field.key] = field.value;
-                return acc;
-              }, {}),
-            });
-          }
+                    },
+                    fcmOptions: {
+                      imageUrl: settings?.image?.imageSrc,
+                    },
+                  }
+                : undefined,
+            data: body.pushObject.fields.reduce((acc, field) => {
+              acc[field.key] = field.value;
+              return acc;
+            }, {}),
+          });
         })
     );
   }
@@ -1238,6 +1239,7 @@ export class EventsService {
         $setOnInsert: {
           _id: event.correlationValue,
           workspaceId,
+          createdAt: new Date(),
         },
       };
 

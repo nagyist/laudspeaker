@@ -19,7 +19,7 @@ import * as os from 'os';
 
 const morgan = require('morgan');
 
-const numCPUs = process.env.NODE_ENV === 'development' ? 1 : os.cpus().length;
+const numCPUs = process.env.NODE_ENV === 'development' ? 2 : os.cpus().length;
 
 if (cluster.isPrimary) {
   console.log(`Primary ${process.pid} is running`);
@@ -30,7 +30,11 @@ if (cluster.isPrimary) {
   }
 
   cluster.on('exit', (worker, code, signal) => {
-    console.log(`worker ${worker.process.pid} died`);
+    console.log(
+      `Worker ${worker.process.pid} died with code: ${code} and signal: ${signal}`
+    );
+    console.log('Starting a new worker');
+    cluster.fork(); // Fork a new worker to replace the one that died
   });
 } else {
   const expressApp = express();

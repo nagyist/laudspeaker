@@ -344,6 +344,7 @@ export class StepsService {
             isDeleted: false,
             isPaused: false,
             isStopped: false,
+            isEnrolling: false,
           },
         },
         relations: ['owner'],

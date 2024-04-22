@@ -19,6 +19,7 @@ import { CreateTemplateDto } from './dto/create-template.dto';
 import { UpdateTemplateDto } from './dto/update-template.dto';
 import {
   FallBackAction,
+  MIMEType,
   Template,
   TemplateType,
   WebhookData,
@@ -304,6 +305,8 @@ export class TemplatesService extends QueueEventsHost {
           break;
         case TemplateType.WEBHOOK:
           template.webhookData = createTemplateDto.webhookData;
+          if (template.webhookData)
+            template.webhookData.mimeType ||= MIMEType.JSON;
           break;
         case TemplateType.MODAL:
           template.modalState = createTemplateDto.modalState;
@@ -850,16 +853,25 @@ export class TemplatesService extends QueueEventsHost {
   }
 
   async testWebhookTemplate(testWebhookDto: TestWebhookDto, session: string) {
-    const customer = await this.customerModel.findOne({
-      email: testWebhookDto.testCustomerEmail,
+    //console.log("In test webhook a")
+
+    let customer = await this.customerModel.findOne({
+      _id: testWebhookDto.testCustomerId,
     });
 
-    if (!customer) throw new NotFoundException('Customer not found');
+    //console.log("In test webhook")
+
+    if (!customer) {
+      customer = new this.customerModel({});
+      //console.log('Using temporary customer');
+    }
 
     const { _id, workspaceId, workflows, ...tags } = customer.toObject();
     const filteredTags = cleanTagsForSending(tags);
 
-    const { method } = testWebhookDto.webhookData;
+    const { method, mimeType } = testWebhookDto.webhookData;
+
+    //console.log("In test webhook 2")
 
     let { body, headers, url } = testWebhookDto.webhookData;
 
@@ -884,6 +896,8 @@ export class TemplatesService extends QueueEventsHost {
       });
     }
 
+    //console.log("In test webhook 3")
+
     headers = Object.fromEntries(
       await Promise.all(
         Object.entries(headers).map(async ([key, value]) => [
@@ -900,6 +914,19 @@ export class TemplatesService extends QueueEventsHost {
         ])
       )
     );
+
+    headers['content-type'] = mimeType;
+
+    //console.log("this is the send test webhook");
+
+    /*
+    console.log('URL:', url);
+    console.log('Method:', method);
+    console.log('Headers:', headers);
+    if (body) {
+      console.log('Body:', body);
+    }
+    */
 
     try {
       const res = await fetch(url, {

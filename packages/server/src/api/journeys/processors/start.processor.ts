@@ -8,24 +8,31 @@ import {
   InjectQueue,
   OnWorkerEvent,
 } from '@nestjs/bullmq';
-import { Job, Queue } from 'bullmq';
+import { Job, MetricsTime, Queue } from 'bullmq';
 import { DataSource } from 'typeorm';
 import { InjectConnection } from '@nestjs/mongoose';
 import mongoose from 'mongoose';
 import * as _ from 'lodash';
 import * as Sentry from '@sentry/node';
-import { CustomersService } from '../customers/customers.service';
-import { Account } from '../accounts/entities/accounts.entity';
-import { Journey } from './entities/journey.entity';
-import { JourneyLocationsService } from './journey-locations.service';
-import { JourneysService } from './journeys.service';
-import { Step } from '../steps/entities/step.entity';
-import { Workspace } from '../workspaces/entities/workspace.entity';
+import { CustomersService } from '../../customers/customers.service';
+import { Account } from '../../accounts/entities/accounts.entity';
+import { Journey } from '../entities/journey.entity';
+import { JourneyLocationsService } from '../journey-locations.service';
+import { JourneysService } from '../journeys.service';
+import { Step } from '../../steps/entities/step.entity';
+import { Workspace } from '@/api/workspaces/entities/workspace.entity';
 
 const BATCH_SIZE = +process.env.START_BATCH_SIZE;
 
 @Injectable()
-@Processor('start', { removeOnComplete: { count: 100 } })
+@Processor('start', {
+  metrics: {
+    maxDataPoints: MetricsTime.ONE_WEEK,
+  },
+  concurrency: process.env.START_PROCESSOR_CONCURRENCY
+    ? +process.env.START_PROCESSOR_CONCURRENCY
+    : 1,
+})
 export class StartProcessor extends WorkerHost {
   constructor(
     private dataSource: DataSource,
@@ -126,8 +133,8 @@ export class StartProcessor extends WorkerHost {
   async process(
     job: Job<
       {
-        owner: Account;
         workspace: Workspace;
+        owner: Account;
         step: Step;
         journey: Journey;
         skip: number;

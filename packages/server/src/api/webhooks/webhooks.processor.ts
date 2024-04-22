@@ -15,6 +15,7 @@ import {
   FallBackAction,
   Template,
   WebhookMethod,
+  MIMEType,
 } from '../templates/entities/template.entity';
 import { TemplatesService } from '../templates/templates.service';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -100,7 +101,7 @@ export class WebhooksProcessor extends WorkerHost {
   async process(job: Job<{ template: Template; [key: string]: any }>) {
     const { template, filteredTags } = job.data;
 
-    const { method, retries, fallBackAction } = template.webhookData;
+    const { method, retries, fallBackAction, mimeType } = template.webhookData;
 
     let { body, headers, url } = template.webhookData;
 
@@ -141,6 +142,14 @@ export class WebhooksProcessor extends WorkerHost {
         ])
       )
     );
+
+    // add content type to headers
+    if (Object.values(MIMEType).includes(mimeType)) {
+      headers = {
+        ...headers,
+        'content-type': mimeType,
+      };
+    }
 
     const workspace = await this.workspacesRepository.findOneBy({
       id: job.data.workspaceId,

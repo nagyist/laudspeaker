@@ -70,11 +70,12 @@ import { JourneyLocation } from '@/api/journeys/entities/journey-location.entity
 
 @Injectable()
 @Processor('transition', {
-  removeOnComplete: { count: 100000 },
   metrics: {
-    maxDataPoints: MetricsTime.ONE_HOUR,
+    maxDataPoints: MetricsTime.ONE_WEEK,
   },
-  concurrency: 5,
+  concurrency: process.env.TRANSITION_PROCESSOR_CONCURRENCY
+    ? +process.env.TRANSITION_PROCESSOR_CONCURRENCY
+    : 1,
 })
 export class TransitionProcessor extends WorkerHost {
   private phClient = new PostHog('RxdBl8vjdTwic7xTzoKTdbmeSC1PCzV6sw-x-FKSB-k');
@@ -735,9 +736,26 @@ export class TransitionProcessor extends WorkerHost {
       }
     }
 
+    let template: Template = await this.cacheManager.get(
+      `template:${step.metadata.template}`
+    );
+
+    if (!template) {
+      template = await this.templatesService.lazyFindByID(
+        step.metadata.template
+      );
+      await this.cacheManager.set(
+        `template:${step.metadata.destination}`,
+        template,
+        5000
+      );
+    }
+
     if (
       messageSendType === 'SEND' &&
-      process.env.MOCK_MESSAGE_SEND === 'true'
+      process.env.MOCK_MESSAGE_SEND === 'true' &&
+      template &&
+      !template.webhookData
     ) {
       // 3. CHECK IF MESSAGE SEND SHOULD BE MOCKED
       messageSendType = 'MOCK_SEND';
@@ -745,18 +763,7 @@ export class TransitionProcessor extends WorkerHost {
 
     if (messageSendType === 'SEND') {
       //send message here
-      let template: Template = await this.cacheManager.get(
-        `template:${step.metadata.template}`
-      );
-      if (!template) {
-        template = await this.templatesService.lazyFindByID(
-          step.metadata.template
-        );
-        await this.cacheManager.set(
-          `template:${step.metadata.destination}`,
-          template
-        );
-      }
+
       const { email } = owner;
 
       const { _id, workspaceId, workflows, journeys, ...tags } = customer;
@@ -855,6 +862,7 @@ export class TransitionProcessor extends WorkerHost {
             tags: filteredTags,
             templateID: template.id,
             eventProvider: emailProvider,
+            session,
           });
           this.debug(
             `${JSON.stringify(ret)}`,
@@ -880,114 +888,103 @@ export class TransitionProcessor extends WorkerHost {
 
           switch (step.metadata.selectedPlatform) {
             case 'All':
-              const tokenStorageAndroidIOS = [
-                ...customer.iosFCMTokens,
-                ...customer.androidFCMTokens,
-              ].reduce(
-                (acc, el) => (acc.includes(el) ? acc : [...acc, el]),
-                [] as string[]
+              await this.webhooksService.insertMessageStatusToClickhouse(
+                await sender.process({
+                  name: 'android',
+                  workspaceID: workspace.id,
+                  accountID: owner.id,
+                  stepID: step.id,
+                  customerID: customer._id,
+                  firebaseCredentials:
+                    pushAndroidChannel.pushPlatforms.Android.credentials,
+                  deviceToken: customer.androidDeviceToken,
+                  pushTitle: template.pushObject.settings.Android.title,
+                  pushText: template.pushObject.settings.Android.description,
+                  kvPairs: template.pushObject.fields,
+                  trackingEmail: email,
+                  filteredTags: filteredTags,
+                  templateID: template.id,
+                  quietHours: journey.journeySettings.quietHours.enabled
+                    ? journey.journeySettings?.quietHours
+                    : undefined,
+                  session,
+                }),
+                session
               );
-              for (const token of tokenStorageAndroidIOS) {
-                await this.webhooksService.insertMessageStatusToClickhouse(
-                  await sender.process({
-                    name: 'ios',
-                    accountID: owner.id,
-                    workspaceID: workspace.id,
-                    stepID: step.id,
-                    customerID: customer._id,
-                    firebaseCredentials:
-                      pushIosChannel.pushPlatforms.Android.credentials,
-                    deviceToken: token,
-                    pushTitle: template.pushObject.settings.iOS.title,
-                    pushText: template.pushObject.settings.iOS.description,
-                    trackingEmail: email,
-                    filteredTags: filteredTags,
-                    templateID: template.id,
-                    quietHours: journey.journeySettings.quietHours.enabled
-                      ? journey.journeySettings?.quietHours
-                      : undefined,
-                  }),
-                  session
-                );
-              }
-              for (const token of tokenStorageAndroidIOS) {
-                await this.webhooksService.insertMessageStatusToClickhouse(
-                  await sender.process({
-                    name: 'android',
-                    accountID: owner.id,
-                    workspaceID: workspace.id,
-                    stepID: step.id,
-                    customerID: customer._id,
-                    firebaseCredentials:
-                      pushAndroidChannel.pushPlatforms.Android.credentials,
-                    deviceToken: token,
-                    pushTitle: template.pushObject.settings.Android.title,
-                    pushText: template.pushObject.settings.Android.description,
-                    trackingEmail: email,
-                    filteredTags: filteredTags,
-                    templateID: template.id,
-                    quietHours: journey.journeySettings.quietHours.enabled
-                      ? journey.journeySettings?.quietHours
-                      : undefined,
-                  }),
-                  session
-                );
-              }
+              await this.webhooksService.insertMessageStatusToClickhouse(
+                await sender.process({
+                  name: 'ios',
+                  workspaceID: workspace.id,
+                  accountID: owner.id,
+                  stepID: step.id,
+                  customerID: customer._id,
+                  firebaseCredentials:
+                    pushIosChannel.pushPlatforms.iOS.credentials,
+                  deviceToken: customer.iosDeviceToken,
+                  pushTitle: template.pushObject.settings.iOS.title,
+                  pushText: template.pushObject.settings.iOS.description,
+                  kvPairs: template.pushObject.fields,
+                  trackingEmail: email,
+                  filteredTags: filteredTags,
+                  templateID: template.id,
+                  quietHours: journey.journeySettings.quietHours.enabled
+                    ? journey.journeySettings?.quietHours
+                    : undefined,
+                  session,
+                }),
+                session
+              );
 
               break;
             case 'iOS':
-              const iosTokenStorage = customer.iosFCMTokens;
-              for (const token of iosTokenStorage) {
-                await this.webhooksService.insertMessageStatusToClickhouse(
-                  await sender.process({
-                    name: 'ios',
-                    accountID: owner.id,
-                    workspaceID: workspace.id,
-                    stepID: step.id,
-                    customerID: customer._id,
-                    firebaseCredentials:
-                      pushIosChannel.pushPlatforms.iOS.credentials,
-                    deviceToken: token,
-                    pushTitle: template.pushObject.settings.iOS.title,
-                    pushText: template.pushObject.settings.iOS.description,
-                    trackingEmail: email,
-                    filteredTags: filteredTags,
-                    templateID: template.id,
-                    quietHours: journey.journeySettings.quietHours.enabled
-                      ? journey.journeySettings?.quietHours
-                      : undefined,
-                  }),
-                  session
-                );
-              }
+              await this.webhooksService.insertMessageStatusToClickhouse(
+                await sender.process({
+                  name: 'ios',
+                  workspaceID: workspace.id,
+                  accountID: owner.id,
+                  stepID: step.id,
+                  customerID: customer._id,
+                  firebaseCredentials:
+                    pushIosChannel.pushPlatforms.iOS.credentials,
+                  deviceToken: customer.iosDeviceToken,
+                  pushTitle: template.pushObject.settings.iOS.title,
+                  pushText: template.pushObject.settings.iOS.description,
+                  kvPairs: template.pushObject.fields,
+                  trackingEmail: email,
+                  filteredTags: filteredTags,
+                  templateID: template.id,
+                  quietHours: journey.journeySettings.quietHours.enabled
+                    ? journey.journeySettings?.quietHours
+                    : undefined,
+                  session,
+                }),
+                session
+              );
               break;
             case 'Android':
-              const androidTokenStorage = customer.androidFCMTokens;
-
-              for (const token of androidTokenStorage) {
-                await this.webhooksService.insertMessageStatusToClickhouse(
-                  await sender.process({
-                    name: 'android',
-                    accountID: owner.id,
-                    workspaceID: workspace.id,
-                    stepID: step.id,
-                    customerID: customer._id,
-                    firebaseCredentials:
-                      pushAndroidChannel.pushPlatforms.Android.credentials,
-                    deviceToken: token,
-                    pushTitle: template.pushObject.settings.Android.title,
-                    pushText: template.pushObject.settings.Android.description,
-                    trackingEmail: email,
-                    filteredTags: filteredTags,
-                    templateID: template.id,
-                    quietHours: journey.journeySettings.quietHours.enabled
-                      ? journey.journeySettings?.quietHours
-                      : undefined,
-                  }),
-                  session
-                );
-              }
-
+              await this.webhooksService.insertMessageStatusToClickhouse(
+                await sender.process({
+                  name: 'android',
+                  workspaceID: workspace.id,
+                  accountID: owner.id,
+                  stepID: step.id,
+                  customerID: customer._id,
+                  firebaseCredentials:
+                    pushAndroidChannel.pushPlatforms.Android.credentials,
+                  deviceToken: customer.androidDeviceToken,
+                  pushTitle: template.pushObject.settings.Android.title,
+                  pushText: template.pushObject.settings.Android.description,
+                  trackingEmail: email,
+                  kvPairs: template.pushObject.fields,
+                  filteredTags: filteredTags,
+                  templateID: template.id,
+                  quietHours: journey.journeySettings.quietHours.enabled
+                    ? journey.journeySettings?.quietHours
+                    : undefined,
+                  session,
+                }),
+                session
+              );
               break;
           }
           break;
@@ -1023,6 +1020,7 @@ export class TransitionProcessor extends WorkerHost {
                   filteredTags
                 ),
               },
+              session,
             }),
             session
           );
@@ -1050,6 +1048,7 @@ export class TransitionProcessor extends WorkerHost {
               to: customer.phPhoneNumber || customer.phone,
               token: twilioChannel.token,
               trackingEmail: email,
+              session,
             }),
             session
           );
@@ -1179,17 +1178,21 @@ export class TransitionProcessor extends WorkerHost {
       return;
     }
 
-    let nextStep: Step = await this.cacheManager.get(
-      `step:${step.metadata.destination}`
-    );
-    if (!nextStep) {
-      nextStep = await this.stepsService.lazyFindByID(
-        step.metadata.destination
+    let nextStep: Step;
+
+    if (step.metadata.destination) {
+      nextStep = await this.cacheManager.get(
+        `step:${step.metadata.destination}`
       );
-      await this.cacheManager.set(
-        `step:${step.metadata.destination}`,
-        nextStep
-      );
+      if (!nextStep) {
+        nextStep = await this.stepsService.lazyFindByID(
+          step.metadata.destination
+        );
+        await this.cacheManager.set(
+          `step:${step.metadata.destination}`,
+          nextStep
+        );
+      }
     }
 
     if (nextStep) {

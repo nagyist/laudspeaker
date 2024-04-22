@@ -130,8 +130,8 @@ export interface QueryObject {
 }
 
 const acceptableBooleanConvertable = {
-  true: ['TRUE', 'true', 'T', 't'],
-  false: ['FALSE', 'false', 'F', 'f'],
+  true: ['TRUE', 'true', 'T', 't', 'yes', '1'],
+  false: ['FALSE', 'false', 'F', 'f', 'no', '0'],
 };
 
 export interface SystemAttribute {
@@ -5228,9 +5228,10 @@ export class CustomersService {
     account: Account,
     take = 100,
     skip = 0,
-    search = ''
+    search = '',
+    isWebhook = false
   ): Promise<{
-    data: { id: string; email: string; phone: string }[];
+    data: { id: string; email: string; phone: string; [key: string]: string }[];
     totalPages: number;
   }> {
     const workspace = account.currentWorkspace;
@@ -5266,11 +5267,10 @@ export class CustomersService {
           ...(pk ? [{ [pk.key]: findRegexp }] : []),
         ],
       };
-      //console.log("and--")
-      query['$and'] = [deviceTokenConditions, searchConditions];
+
+      if (!isWebhook) query['$and'] = [deviceTokenConditions, searchConditions];
     } else {
-      //console.log("or--")
-      query['$or'] = deviceTokenConditions['$or'];
+      if (!isWebhook) query['$or'] = deviceTokenConditions['$or'];
     }
 
     //console.log("query to execute is", JSON.stringify(query,null,2));
@@ -5295,6 +5295,10 @@ export class CustomersService {
         info['id'] = cust['_id'].toString();
         info['email'] = cust['email']?.toString() || '';
         info['phone'] = cust['phone']?.toString() || '';
+        if (pk?.key) {
+          info[pk.key] = cust[pk.key]?.toString() || '';
+        }
+
         return info;
       }),
       totalPages,
@@ -5476,9 +5480,10 @@ export class CustomersService {
         }
       }
     } else if (convertTo === AttributeType.BOOLEAN) {
-      converted = acceptableBooleanConvertable.true.includes(value)
+      const trimmedLowerValue = value.trim().toLowerCase();
+      converted = acceptableBooleanConvertable.true.includes(trimmedLowerValue)
         ? true
-        : acceptableBooleanConvertable.false.includes(value)
+        : acceptableBooleanConvertable.false.includes(trimmedLowerValue)
         ? false
         : null;
     } else if (
