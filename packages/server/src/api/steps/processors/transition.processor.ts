@@ -580,7 +580,9 @@ export class TransitionProcessor extends WorkerHost {
     const organization = owner.teams[0].organization;
     const workspace = organization.workspaces?.[0];
 
-    await this.organizationService.checkOrganizationMessageLimit(organization);
+    await this.organizationService.checkOrganizationMessageLimit(
+      organization.id
+    );
 
     // Rate limiting and sending quiet hours will be stored here
     type MessageSendType =
@@ -1102,7 +1104,7 @@ export class TransitionProcessor extends WorkerHost {
 
     let nextStep: Step;
 
-    if(step.metadata.destination) {
+    if (step.metadata.destination) {
       nextStep = await this.cacheManager.get(
         `step:${step.metadata.destination}`
       );

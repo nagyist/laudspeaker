@@ -5,6 +5,7 @@ import {
   HttpStatus,
   Inject,
   Injectable,
+  NotFoundException,
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -49,6 +50,8 @@ export class OrganizationService {
     public journeysRepository: Repository<Organization>,
     @InjectRepository(Workspaces)
     public workspacesRepository: Repository<Workspaces>,
+    @InjectRepository(Organization)
+    public organizationRepository: Repository<Organization>,
     @InjectRepository(OrganizationInvites)
     public organizationInvitesRepository: Repository<OrganizationInvites>,
     @InjectRepository(OrganizationTeam)
@@ -472,10 +475,13 @@ export class OrganizationService {
     return invite;
   }
 
-  public async checkOrganizationMessageLimit(
-    organization: Organization,
-    messagesToSend = 1
-  ) {
+  public async checkOrganizationMessageLimit(id: string, messagesToSend = 1) {
+    const organization = await this.organizationRepository.findOne({
+      where: { id },
+      relations: ['plan', 'workspaces'],
+    });
+    if (!organization) throw new NotFoundException('Organization not found');
+
     const workspaceIds = organization.workspaces.map(
       (workspace) => `"${workspace.id}"`
     );
