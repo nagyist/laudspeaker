@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CustomersController } from './customers.controller';
 import { CustomersService } from './customers.service';
-import { CustomersProcessor } from './customers.processor';
 import { BullModule } from '@nestjs/bullmq';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Customer, CustomerSchema } from './schemas/customer.schema';
@@ -42,6 +41,9 @@ import { SegmentCustomers } from '../segments/entities/segment-customers.entity'
       name: 'customers',
     }),
     BullModule.registerQueue({
+      name: 'customer_change',
+    }),
+    BullModule.registerQueue({
       name: 'imports',
     }),
     BullModule.registerQueue({
@@ -66,7 +68,6 @@ import { SegmentCustomers } from '../segments/entities/segment-customers.entity'
   controllers: [CustomersController],
   providers: [
     CustomersService,
-    CustomersProcessor,
     AudiencesHelper,
     CustomersConsumerService,
     S3Service,

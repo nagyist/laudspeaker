@@ -26,6 +26,8 @@ import e, { query } from 'express';
 import { CountSegmentUsersSizeDTO } from './dto/size-count.dto';
 import { randomUUID } from 'crypto';
 import { Filter, Document } from 'mongodb';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 
 @Injectable()
 export class SegmentsService {
@@ -40,7 +42,9 @@ export class SegmentsService {
     private customersService: CustomersService,
     private workflowsService: WorkflowsService,
     private readonly audiencesHelper: AudiencesHelper,
-    @InjectConnection() private readonly connection: mongoose.Connection
+    @InjectConnection() private readonly connection: mongoose.Connection,
+    @InjectQueue('segment_update')
+    private readonly segmentUpdateQueue: Queue
   ) {}
 
   log(message, method, session, user = 'ANONYMOUS') {
@@ -437,95 +441,29 @@ export class SegmentsService {
       );
     }
     const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
-    let err;
-    const queryRunner = this.dataSource.createQueryRunner();
+    const queryRunner = await this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
     try {
       const segment = await queryRunner.manager.save(Segment, {
         ...createSegmentDTO,
         workspace: { id: workspace.id },
+        isUpdating: true,
       });
-
-      this.debug(
-        `SegmentDTO is: ${createSegmentDTO}`,
-        this.create.name,
-        session,
-        account.id
-      );
-
-      // this.customersService.createSegmentQuery(createSegmentDTO.inclusionCriteria.query);
       if (segment.type === SegmentType.AUTOMATIC) {
-        const collectionPrefix = this.generateRandomString();
-        const customersInSegment =
-          await this.customersService.getSegmentCustomersFromQuery(
-            createSegmentDTO.inclusionCriteria.query,
-            account,
-            session,
-            true,
-            0,
-            collectionPrefix
-          );
-
-        this.debug(
-          `we have customersInSegment: ${customersInSegment}`,
-          this.create.name,
-          session,
-          account.id
-        );
-
-        const batchSize = 500; // Set an appropriate batch size
-        const collectionName = customersInSegment; // Name of the MongoDB collection
-        const mongoCollection = this.connection.db.collection(collectionName);
-
-        let processedCount = 0;
-        const totalDocuments = await mongoCollection.countDocuments();
-
-        while (processedCount < totalDocuments) {
-          // Fetch a batch of documents
-          const customerDocuments = await mongoCollection
-            .find({})
-            .skip(processedCount)
-            .limit(batchSize)
-            .toArray();
-          // Map the MongoDB documents to SegmentCustomers entities
-          const segmentCustomersArray: SegmentCustomers[] =
-            customerDocuments.map((doc) => {
-              const segmentCustomer = new SegmentCustomers();
-              segmentCustomer.customerId = doc._id.toString();
-              segmentCustomer.segment = segment.id;
-              segmentCustomer.workspace =
-                account?.teams?.[0]?.organization?.workspaces?.[0];
-              // Set other properties as needed
-              return segmentCustomer;
-            });
-          // Batch insert into PostgreSQL database
-          await queryRunner.manager.save(
-            SegmentCustomers,
-            segmentCustomersArray
-          );
-          // Update the count of processed documents
-          processedCount += customerDocuments.length;
-        }
-
-        try {
-          await this.deleteCollectionsWithPrefix(collectionPrefix);
-        } catch (e) {
-          this.error(e, this.create.name, session, account.id);
-        }
+        await this.segmentUpdateQueue.add('create', {
+          segment,
+          createSegmentDTO,
+          account,
+        });
       }
       await queryRunner.commitTransaction();
       return segment;
     } catch (e) {
-      err = e;
       this.error(e, this.create.name, session, account.email);
       await queryRunner.rollbackTransaction();
     } finally {
       await queryRunner.release();
-      if (err) {
-        throw err;
-      }
     }
   }
 
@@ -1133,7 +1071,7 @@ export class SegmentsService {
   ) {
     /*
     const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
+   
     await this.segmentCustomersRepository.delete({
       segment:{type:SegmentType.AUTOMATIC},
       customerId: customerId,

@@ -8,9 +8,13 @@ import { SegmentCustomers } from './entities/segment-customers.entity';
 import { Segment } from './entities/segment.entity';
 import { SegmentsController } from './segments.controller';
 import { SegmentsService } from './segments.service';
+import { BullModule } from '@nestjs/bullmq';
 
 @Module({
   imports: [
+    BullModule.registerQueue({
+      name: 'segment_update',
+    }),
     TypeOrmModule.forFeature([Segment, SegmentCustomers]),
     forwardRef(() => CustomersModule),
     forwardRef(() => WorkflowsModule),
