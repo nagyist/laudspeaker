@@ -296,6 +296,25 @@ export class EventsController {
     );
   }
 
+  @Get('/message-events')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(ClassSerializerInterceptor, new RavenInterceptor())
+  async getMessageEvents(
+    @Req() { user }: Request,
+    @Query('take') take?: string,
+    @Query('skip') skip?: string,
+    @Query('search') search?: string
+  ) {
+    const session = randomUUID();
+    return this.eventsService.getMessageEvents(
+      <Account>user,
+      session,
+      take && +take,
+      skip && +skip,
+      search
+    );
+  }
+
   @Get('/posthog-events')
   @UseGuards(JwtAuthGuard)
   @UseInterceptors(ClassSerializerInterceptor, new RavenInterceptor())

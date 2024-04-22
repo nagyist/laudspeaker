@@ -562,6 +562,92 @@ export class EventsService {
     };
   }
 
+  /*
+   *
+   * Retrieves a number of Message Events for the user to see in the Message tracker
+   * uses mongo aggregation
+   */
+  async getMessageEvents(
+    account: Account,
+    session: string,
+    take = 100,
+    skip = 0,
+    search = ''
+  ) {
+    this.debug(
+      ` in customEvents`,
+      this.getCustomEvents.name,
+      session,
+      account.id
+    );
+
+    const searchRegExp = new RegExp(`.*${search}.*`, 'i');
+    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
+
+    const workspaceIdCondition = `workspaceId = '${workspace.id}'`;
+
+    customersService.getMessageTrackerEvents(){
+      
+    }
+    
+
+    const totalPages =
+      Math.ceil(
+        (await this.EventModel.count({
+          event: searchRegExp,
+          workspaceId: workspace.id,
+          //ownerId: (<Account>account).id,
+        }).exec()) / take
+      ) || 1;
+
+    const customEvents = await this.EventModel.aggregate([
+      {
+        $match: {
+          event: searchRegExp,
+          workspaceId: workspace.id,
+          //ownerId: (<Account>account).id,
+        },
+      },
+      {
+        $addFields: {
+          createdAt: { $toDate: '$_id' }, // Convert _id to a date and assign to createdAt
+        },
+      },
+      {
+        $project: {
+          _id: 0, // Exclude the _id field
+          ownerId: 0, // Exclude the ownerId field
+          workspaceId: 0, // Exclude the ownerId field
+          __v: 0, // Exclude the __v field
+          // Note: No need to explicitly include other fields; they are included by default
+        },
+      },
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: take > 100 ? 100 : take },
+    ]).exec();
+
+    return {
+      /*
+      data: customEvents.map((customEvent) => ({
+        ...customEvent.toObject(),
+        //createdAt: customEvent._id.getTimestamp(),
+        createdAt: customEvent._id.getTimestamp(),
+        
+      })),
+      */
+      data: customEvents.map((customEvent) => {
+        const cleanedEvent = {
+          ...customEvent,
+          // Perform any additional transformations here if necessary
+        };
+        return cleanedEvent;
+      }),
+      totalPages,
+    };
+  }
+
+
   //to do need to specify how this is
   async getEventsByMongo(mongoQuery: any, customer: CustomerDocument) {
     //console.log("In getEvents by mongo");
@@ -1024,6 +1110,16 @@ export class EventsService {
                 auth.account.id
               );
               await this.handleSet(auth, thisEvent, session);
+              break;
+            case '$fcm':
+              //this should not do anything right now, but keeping this in case we choose to allow users to explicitly set fcm later
+              this.debug(
+                `Handling $fcm event for correlationKey: ${thisEvent.correlationValue}`,
+                this.batch.name,
+                session,
+                auth.account.id
+              );
+              //await this.handleSet(auth, thisEvent, session);
               break;
             default:
               await this.customPayload(

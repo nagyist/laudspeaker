@@ -64,7 +64,7 @@ const MessageTracker = () => {
       */
 
       const { data } = await ApiService.get({
-        url: `/events/custom-events?take=${itemsPerPage}&skip=${
+        url: `/events/message-events?take=${itemsPerPage}&skip=${
           itemsPerPage * (currentPage - 1)
         }&search=${searchName}`,
       });

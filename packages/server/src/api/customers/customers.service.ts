@@ -508,6 +508,34 @@ export class CustomersService {
     };
   }
 
+  async getMessageTrackerEvents(
+    account: Account,
+    customerId: string,
+    session: string,
+    page = 1,
+    pageSize = 10
+  ){
+    const response = await this.clickhouseClient.query({
+      query: `
+        SELECT stepId, event, createdAt, eventProvider, templateId 
+        FROM message_status 
+        WHERE customerId = {customerId:String} 
+        ORDER BY createdAt DESC
+        LIMIT ${pageSize} OFFSET ${offset}
+      `,
+      query_params: { customerId },
+    });
+
+    return {
+      data: result,
+      page,
+      pageSize,
+      totalPage,
+      totalCount,
+    };
+
+  }
+
   async findCustomerEvents(
     account: Account,
     customerId: string,
