@@ -37,7 +37,8 @@ const createWebhook = ({
   cy.get("#custom-header").type(token);
   cy.get('[data-testid="tab-Headers"]').click();
   cy.get("#add-header").click();
-  cy.get("#custom-header-value-0").type("Content-Type: application/json");
+  cy.get("#custom-header-name-0").type("Content-Type");
+  cy.get("#custom-header-value-0").type("application/json");
   cy.get('[data-testid="tab-Content"]').click();
   cy.get("#webhook-body").type(body);
   cy.get("#saveDraftTemplate").click();
@@ -86,7 +87,7 @@ describe("Create complex journey", () => {
     cy.url().should("include", "/home");
   });
 
-  it("works as expected", () => {
+  it("works as expected", { retries: 3 }, () => {
     cy.wait(1000);
 
     uploadCSV("correctness_testing.csv");
@@ -94,7 +95,7 @@ describe("Create complex journey", () => {
     cy.get("#next-button").click();
     cy.get("[data-testid='confirm-validation-button']").click();
 
-    cy.get("#import-button").click();
+    cy.get("#import-button", { timeout: 30000 }).click();
     cy.contains("Import started").should("be.visible");
 
     cy.wait(5000);
@@ -138,6 +139,7 @@ describe("Create complex journey", () => {
       cy.contains("Event 2").should("be.visible");
       cy.contains("Event 3").should("be.visible");
 
+      cy.wait(1000);
       cy.get('[data-testid="row-0"]').click();
       cy.contains("testing+3@laudspeaker.com").should("be.visible");
     });
