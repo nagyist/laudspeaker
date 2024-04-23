@@ -130,8 +130,8 @@ export interface QueryObject {
 }
 
 const acceptableBooleanConvertable = {
-  true: ['TRUE', 'true', 'T', 't'],
-  false: ['FALSE', 'false', 'F', 'f'],
+  true: ['TRUE', 'true', 'T', 't', 'yes', '1'],
+  false: ['FALSE', 'false', 'F', 'f', 'no', '0'],
 };
 
 export interface SystemAttribute {
@@ -234,6 +234,7 @@ export class CustomersService {
       try {
         const collection = this.connection.db.collection('customers');
         await collection.createIndex('workspaceId');
+        await collection.createIndex({ other_ids: 1, workspaceId: 1 });
         await collection.createIndex(
           { __posthog__id: 1, workspaceId: 1 },
           {
@@ -5194,9 +5195,10 @@ export class CustomersService {
     account: Account,
     take = 100,
     skip = 0,
-    search = ''
+    search = '',
+    isWebhook = false
   ): Promise<{
-    data: { id: string; email: string; phone: string }[];
+    data: { id: string; email: string; phone: string; [key: string]: string }[];
     totalPages: number;
   }> {
     const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
@@ -5228,9 +5230,9 @@ export class CustomersService {
         ],
       };
 
-      query['$and'] = [deviceTokenConditions, searchConditions];
+      if (!isWebhook) query['$and'] = [deviceTokenConditions, searchConditions];
     } else {
-      query['$or'] = deviceTokenConditions['$or'];
+      if (!isWebhook) query['$or'] = deviceTokenConditions['$or'];
     }
 
     const totalCustomers = await this.CustomerModel.count(query).exec();
@@ -5252,6 +5254,10 @@ export class CustomersService {
         info['id'] = cust['_id'].toString();
         info['email'] = cust['email']?.toString() || '';
         info['phone'] = cust['phone']?.toString() || '';
+        if (pk?.key) {
+          info[pk.key] = cust[pk.key]?.toString() || '';
+        }
+
         return info;
       }),
       totalPages,
@@ -5433,9 +5439,10 @@ export class CustomersService {
         }
       }
     } else if (convertTo === AttributeType.BOOLEAN) {
-      converted = acceptableBooleanConvertable.true.includes(value)
+      const trimmedLowerValue = value.trim().toLowerCase();
+      converted = acceptableBooleanConvertable.true.includes(trimmedLowerValue)
         ? true
-        : acceptableBooleanConvertable.false.includes(value)
+        : acceptableBooleanConvertable.false.includes(trimmedLowerValue)
         ? false
         : null;
     } else if (

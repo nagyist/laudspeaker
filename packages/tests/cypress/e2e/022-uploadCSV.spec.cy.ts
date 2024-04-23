@@ -30,7 +30,6 @@ describe("uploadCSV", { retries: 2 }, () => {
       cy.wait(10000);
       cy.visit("/home");
       cy.url().should("include", "/home");
-      // loginFunc(email, password);
     } catch (e) {
       console.log(e);
     }

@@ -138,11 +138,7 @@ const EventBranchEditor: FC<EventBranchEditorProps> = ({
               className="max-w-[90px]"
               placeholder="Add condition"
               customBTN={
-                <Button
-                  type={ButtonType.LINK}
-                  onClick={() => null}
-                  data-testid="event-branch-editor-add-condition-button"
-                >
+                <Button type={ButtonType.LINK} onClick={() => null}>
                   Add condition
                 </Button>
               }

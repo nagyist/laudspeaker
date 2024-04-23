@@ -4,7 +4,7 @@ import {
   InjectQueue,
   OnWorkerEvent,
 } from '@nestjs/bullmq';
-import { Job, Queue, UnrecoverableError } from 'bullmq';
+import { Job, MetricsTime, Queue, UnrecoverableError } from 'bullmq';
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { Correlation, CustomersService } from '../customers/customers.service';
 import { DataSource, Repository } from 'typeorm';
@@ -41,21 +41,22 @@ export enum ProviderType {
 }
 
 @Injectable()
-@Processor('events_pre', { removeOnComplete: { count: 1000 }, concurrency: 10 })
+@Processor('events_pre', {
+  metrics: {
+    maxDataPoints: MetricsTime.ONE_WEEK,
+  },
+  concurrency: process.env.EVENTS_PRE_PROCESSOR_CONCURRENCY
+    ? +process.env.EVENTS_PRE_PROCESSOR_CONCURRENCY
+    : 1,
+})
 export class EventsPreProcessor extends WorkerHost {
   private providerMap: Record<
     ProviderType,
     (job: Job<any, any, string>) => Promise<void>
   > = {
-    [ProviderType.LAUDSPEAKER]: async (job) => {
-      await this.handleCustom(job);
-    },
-    [ProviderType.MESSAGE]: async (job) => {
-      await this.handleMessage(job);
-    },
-    [ProviderType.WU_ATTRIBUTE]: async (job) => {
-      await this.handleAttributeChange(job);
-    },
+    [ProviderType.LAUDSPEAKER]: this.handleCustom,
+    [ProviderType.MESSAGE]: this.handleMessage,
+    [ProviderType.WU_ATTRIBUTE]: this.handleAttributeChange,
   };
 
   constructor(
@@ -143,7 +144,12 @@ export class EventsPreProcessor extends WorkerHost {
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
-    await this.providerMap[job.name](job);
+    const fn = this.providerMap[job.name];
+    const that = this;
+
+    return Sentry.startSpan({ name: `EventsPreProcessor.${fn.name}` }, async () => {
+      await fn.call(that, job);
+    });
   }
 
   async handleCustom(
@@ -163,6 +169,7 @@ export class EventsPreProcessor extends WorkerHost {
     let err: any;
     try {
       //find customer associated with event or create new customer if not found
+      //console.time(`handleCustom - findOrCreateCustomer ${job.data.session}`)
       const {
         customer,
         findType,
@@ -174,7 +181,9 @@ export class EventsPreProcessor extends WorkerHost {
           null,
           job.data.event
         );
+      //console.timeEnd(`handleCustom - findOrCreateCustomer ${job.data.session}`)
       //get all the journeys that are active, and pipe events to each journey in case they are listening for event
+      //console.time(`handleCustom - find journeys ${job.data.session}`)
       const journeys = await this.journeysRepository.find({
         where: {
           workspace: {
@@ -186,8 +195,10 @@ export class EventsPreProcessor extends WorkerHost {
           isDeleted: false,
         },
       });
+      //console.timeEnd(`handleCustom - find journeys ${job.data.session}`)
       // add event to event database for visibility
       if (job.data.event) {
+        //console.time(`handleCustom - create event ${job.data.session}`)
         await this.eventModel.create(
           [
             {
@@ -198,12 +209,14 @@ export class EventsPreProcessor extends WorkerHost {
           ],
           { session: transactionSession }
         );
+        //console.timeEnd(`handleCustom - create event ${job.data.session}`)
       }
 
       await transactionSession.commitTransaction();
 
       // Always add jobs after committing transactions, otherwise there could be race conditions
       for (let i = 0; i < journeys.length; i++) {
+        //console.time(`handleCustom - adding to queue ${job.data.session}`)
         await this.eventsQueue.add(
           EventType.EVENT,
           {
@@ -219,6 +232,7 @@ export class EventsPreProcessor extends WorkerHost {
             backoff: { type: 'fixed', delay: 1000 },
           }
         );
+        //console.timeEnd(`handleCustom - adding to queue ${job.data.session}`)
       }
     } catch (e) {
       if (transactionSession.inTransaction())

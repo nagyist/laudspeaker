@@ -4,7 +4,7 @@ import {
   InjectQueue,
   OnWorkerEvent,
 } from '@nestjs/bullmq';
-import { Job, Queue, UnrecoverableError } from 'bullmq';
+import { Job, MetricsTime, Queue, UnrecoverableError } from 'bullmq';
 import { Inject, Injectable, Logger, forwardRef } from '@nestjs/common';
 import { Account } from '../accounts/entities/accounts.entity';
 import { CustomerDocument } from '../customers/schemas/customer.schema';
@@ -38,21 +38,22 @@ export enum EventType {
 }
 
 @Injectable()
-@Processor('events', { removeOnComplete: { count: 1000 }, concurrency: 5 })
+@Processor('events', {
+  metrics: {
+    maxDataPoints: MetricsTime.ONE_WEEK,
+  },
+  concurrency: process.env.EVENTS_PROCESSOR_CONCURRENCY
+    ? +process.env.EVENTS_PROCESSOR_CONCURRENCY
+    : 1,
+})
 export class EventsProcessor extends WorkerHost {
   private providerMap: Record<
     EventType,
     (job: Job<any, any, string>) => Promise<void>
   > = {
-    [EventType.EVENT]: async (job) => {
-      await this.handleEvent(job);
-    },
-    [EventType.ATTRIBUTE]: async (job) => {
-      await this.handleAttributeChange(job);
-    },
-    [EventType.MESSAGE]: async (job) => {
-      await this.handleMessage(job);
-    },
+    [EventType.EVENT]: this.handleEvent,
+    [EventType.ATTRIBUTE]: this.handleAttributeChange,
+    [EventType.MESSAGE]: this.handleMessage
   };
   constructor(
     @Inject(WINSTON_MODULE_NEST_PROVIDER)
@@ -134,7 +135,12 @@ export class EventsProcessor extends WorkerHost {
   async process(job: Job<any, any, string>): Promise<any> {
     let err: any;
     try {
-      await this.providerMap[job.name](job);
+      const fn = this.providerMap[job.name];
+      const that = this;
+      
+      return Sentry.startSpan({ name: `EventsProcessor.${fn.name}` }, async () => {
+        await fn.call(that, job);
+      });
     } catch (e) {
       this.error(e, this.process.name, job.data.session);
       err = e;

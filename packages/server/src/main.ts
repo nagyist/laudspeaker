@@ -11,6 +11,7 @@ import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { urlencoded } from 'body-parser';
 import { readFileSync } from 'fs';
 import * as Sentry from '@sentry/node';
+import { ProfilingIntegration } from '@sentry/profiling-node';
 import { setTimeout as originalSetTimeout } from 'timers';
 import { setInterval as originalSetInterval } from 'timers';
 import express from 'express';
@@ -30,18 +31,27 @@ if (cluster.isPrimary) {
   }
 
   cluster.on('exit', (worker, code, signal) => {
-    console.log(`worker ${worker.process.pid} died`);
+    console.log(
+      `Worker ${worker.process.pid} died with code: ${code} and signal: ${signal}`
+    );
+    console.log('Starting a new worker');
+    cluster.fork(); // Fork a new worker to replace the one that died
   });
 } else {
   const expressApp = express();
 
   Sentry.init({
     dsn: process.env.SENTRY_DSN_URL_BACKEND,
+    environment: process.env.SENTRY_ENVIRONMENT || process.env.ENVIRONMENT,
     release: process.env.SENTRY_RELEASE,
     integrations: [
       new Sentry.Integrations.Express({
         app: expressApp,
       }),
+      new Sentry.Integrations.Mongo({ useMongoose: true }),
+      new Sentry.Integrations.Postgres({ usePgNative: true }),
+      new Sentry.Integrations.Http({ tracing: true }),
+      new ProfilingIntegration(),
       ...Sentry.autoDiscoverNodePerformanceMonitoringIntegrations(),
     ],
     // Performance Monitoring
