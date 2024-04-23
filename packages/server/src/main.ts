@@ -48,6 +48,7 @@ if (cluster.isPrimary) {
       new Sentry.Integrations.Express({
         app: expressApp,
       }),
+      new Sentry.Integrations.Mongo({ useMongoose: true }),
       new Sentry.Integrations.Postgres({ usePgNative: true }),
       new Sentry.Integrations.Http({ tracing: true }),
       new ProfilingIntegration(),
