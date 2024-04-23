@@ -1,10 +1,3 @@
-import credentials from "../fixtures/credentials";
-import signup from "../test-helpers/signup";
-import { setupOrganization } from "../test-helpers/setupOrganization";
-
-const { email, password, firstName, lastName, organizationName, timeZone } =
-  credentials;
-
 const createWebhook = ({
   name = "WH_1",
   url = `${Cypress.env("TESTS_API_BASE_URL")}/events/`,
@@ -27,7 +20,8 @@ const createWebhook = ({
   cy.get("#custom-header").type(token);
   cy.get('[data-testid="tab-Headers"]').click();
   cy.get("#add-header").click();
-  cy.get("#custom-header-0").type("Content-Type: application/json");
+  cy.get("#custom-header-name-0").type("Content-Type");
+  cy.get("#custom-header-value-0").type("application/json");
   cy.get('[data-testid="tab-Content"]').click();
   cy.get("#webhook-body").type(body);
   cy.get("#saveDraftTemplate").click();
@@ -85,24 +79,7 @@ const testValues = [
 ];
 
 describe("Comprehensive MultiSplit", { retries: 2 }, () => {
-  beforeEach(() => {
-    try {
-      cy.request(`${Cypress.env("TESTS_API_BASE_URL")}/tests/reset-tests`);
-      cy.wait(1000);
-      cy.clearAllCookies();
-      cy.clearAllLocalStorage();
-      cy.clearAllSessionStorage();
-      signup(email, password, firstName, lastName);
-      cy.wait(1000);
-      setupOrganization(organizationName, timeZone);
-      cy.wait(10000);
-      cy.visit("/home");
-      cy.url().should("include", "/home");
-      // loginFunc(email, password);
-    } catch (e) {
-      console.log(e);
-    }
-  });
+  beforeEach(cy.setUpTest);
 
   it("works as expected", () => {
     cy.uploadCSV();

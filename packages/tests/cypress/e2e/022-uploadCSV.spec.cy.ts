@@ -1,10 +1,4 @@
-import credentials from "../fixtures/credentials";
-import signup from "../test-helpers/signup";
-import { setupOrganization } from "../test-helpers/setupOrganization";
 import { uploadCSV } from "../test-helpers/uploadCSV";
-
-const { email, password, firstName, lastName, organizationName, timeZone } =
-  credentials;
 
 const mapField = (field: string, option: string) => {
   cy.get(`[data-testid='mapping-select-${field}-button']`).click({
@@ -17,23 +11,7 @@ const mapField = (field: string, option: string) => {
 };
 
 describe("uploadCSV", { retries: 2 }, () => {
-  beforeEach(() => {
-    try {
-      cy.request(`${Cypress.env("TESTS_API_BASE_URL")}/tests/reset-tests`);
-      cy.wait(1000);
-      cy.clearAllCookies();
-      cy.clearAllLocalStorage();
-      cy.clearAllSessionStorage();
-      signup(email, password, firstName, lastName);
-      cy.wait(1000);
-      setupOrganization(organizationName, timeZone);
-      cy.wait(10000);
-      cy.visit("/home");
-      cy.url().should("include", "/home");
-    } catch (e) {
-      console.log(e);
-    }
-  });
+  beforeEach(cy.setUpTest);
 
   it("works as expected", () => {
     cy.modifyAttributes();

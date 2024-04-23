@@ -1,4 +1,7 @@
 import "@4tw/cypress-drag-drop";
+import signup from "../test-helpers/signup";
+import credentials from "../fixtures/credentials";
+import { setupOrganization } from "../test-helpers/setupOrganization";
 /// <reference types="cypress" />
 // ***********************************************
 // This example commands.ts shows you how to
@@ -41,13 +44,35 @@ declare global {
     interface Chainable {
       uploadCSV: (args?: any) => void;
       modifyAttributes: (args?: any) => void;
+      setUpTest: () => void;
     }
   }
 }
 
+const { email, password, firstName, lastName, organizationName, timeZone } =
+  credentials;
+
+Cypress.Commands.add("setUpTest", () => {
+  try {
+    cy.request(`${Cypress.env("TESTS_API_BASE_URL")}/tests/reset-tests`);
+    cy.wait(1000);
+    cy.clearAllCookies();
+    cy.clearAllLocalStorage();
+    cy.clearAllSessionStorage();
+    signup(email, password, firstName, lastName);
+    cy.wait(1000);
+    setupOrganization(organizationName, timeZone);
+    cy.wait(10000);
+    cy.visit("/home");
+    cy.url().should("include", "/home");
+  } catch (e) {
+    console.log(e);
+  }
+});
+
 Cypress.Commands.add("modifyAttributes", (args) => {
   //  set user attributes
-  const user = JSON.parse(localStorage.getItem("userData") || "{}");
+  const user = JSON.parse(localStorage.getItem("userData") ?? "{}");
 
   const primaryKey = {
     key: "email",
@@ -123,7 +148,7 @@ Cypress.Commands.add("modifyAttributes", (args) => {
 });
 
 Cypress.Commands.add("uploadCSV", (args) => {
-  const user = JSON.parse(localStorage.getItem("userData") || "{}");
+  const user = JSON.parse(localStorage.getItem("userData") ?? "{}");
 
   cy.modifyAttributes();
 
@@ -158,7 +183,6 @@ Cypress.Commands.add("uploadCSV", (args) => {
             asAttribute: {
               key: "name",
               type: "String",
-              // dateFormat: "undefined",
               skip: false,
             },
           },
@@ -195,7 +219,6 @@ Cypress.Commands.add("uploadCSV", (args) => {
             asAttribute: {
               key: "is_delete",
               type: "Boolean",
-              // dateFormat: "undefined",
               skip: false,
             },
           },
