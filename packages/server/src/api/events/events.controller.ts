@@ -214,11 +214,7 @@ export class EventsController {
     @Req() { user }: Request,
     @Body() { token }: { token: string }
   ) {
-    try {
-      await this.eventsService.sendTestPush(<Account>user, token);
-    } catch (error) {
-      throw error;
-    }
+    await this.eventsService.sendTestPush(<Account>user, token);
   }
 
   @Post('/sendTestPushByCustomer')
@@ -228,11 +224,7 @@ export class EventsController {
     @Req() { user }: Request,
     @Body() body: CustomerPushTest
   ) {
-    try {
-      await this.eventsService.sendTestPushByCustomer(<Account>user, body);
-    } catch (error) {
-      throw error;
-    }
+    await this.eventsService.sendTestPushByCustomer(<Account>user, body);
   }
 
   @Get('/attributes/:resourceId?')
@@ -331,18 +323,11 @@ export class EventsController {
     @Body() body: any
   ): Promise<void | HttpException> {
     const session = randomUUID();
-    //console.log("this is the body", JSON.stringify(body, null, 2));
-    this.debug(
-      `Handling batch: ${JSON.stringify(body, null, 2)}`,
-      this.testEndpoint.name,
-      session
-    );
     this.eventsService.batch(
       <{ account: Account; workspace: Workspaces }>user,
       body,
       session
     );
-    //console.log("finished processing the batch?")
     return;
   }
 }

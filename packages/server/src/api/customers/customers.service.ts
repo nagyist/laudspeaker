@@ -3,6 +3,7 @@ import mongoose, {
   ClientSession,
   isValidObjectId,
   Model,
+  mongo,
   Query,
   Types,
 } from 'mongoose';
@@ -129,8 +130,8 @@ export interface QueryObject {
 }
 
 const acceptableBooleanConvertable = {
-  true: ['TRUE', 'true', 'T', 't'],
-  false: ['FALSE', 'false', 'F', 'f'],
+  true: ['TRUE', 'true', 'T', 't', 'yes', '1'],
+  false: ['FALSE', 'false', 'F', 'f', 'no', '0'],
 };
 
 export interface SystemAttribute {
@@ -219,8 +220,6 @@ export class CustomersService {
     private readonly workflowsService: WorkflowsService,
     @Inject(StepsService)
     private readonly stepsService: StepsService,
-    //@Inject(JourneysService)
-    //private readonly journeysService: JourneysService,
     @Inject(EventsService)
     private readonly eventsService: EventsService,
     @InjectConnection()
@@ -235,6 +234,7 @@ export class CustomersService {
       try {
         const collection = this.connection.db.collection('customers');
         await collection.createIndex('workspaceId');
+        await collection.createIndex({ other_ids: 1, workspaceId: 1 });
         await collection.createIndex(
           { __posthog__id: 1, workspaceId: 1 },
           {
@@ -327,10 +327,6 @@ export class CustomersService {
   > {
     const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
-    this.debug(`in create ok`, this.create.name, session);
-
-    //console.log("this is the create customerDTO", JSON.stringify(createCustomerDto, null, 2));
-
     const createdCustomer = new this.CustomerModel({
       _id: randomUUID(),
       workspaceId: workspace.id,
@@ -338,8 +334,6 @@ export class CustomersService {
       ...createCustomerDto,
     });
     const ret = await createdCustomer.save({ session: transactionSession });
-
-    this.debug(`saved customer`, this.create.name, session);
 
     for (const key of Object.keys(ret.toObject()).filter(
       (item) => !KEYS_TO_SKIP.includes(item)
@@ -372,57 +366,6 @@ export class CustomersService {
     this.debug(`customer successfuly created`, this.create.name, session);
 
     return ret;
-  }
-
-  /**
-   * Finds all customers that match the inclusion criteria. Uses findAll under
-   * the hood.
-   *
-   * @remarks
-   * Optimize this to happen inside of mongo later.
-   *
-   * @param account - The owner of the customers
-   * @param criteria - Inclusion criteria to match on
-   *
-   */
-  async findByInclusionCriteriaTwo(
-    account: Account,
-    criteria: any,
-    transactionSession: ClientSession,
-    session: string
-  ): Promise<CustomerDocument[]> {
-    let customers: CustomerDocument[] = [];
-    const ret: CustomerDocument[] = [];
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
-    try {
-      customers = await this.CustomerModel.find({
-        workspaceId: workspace.id,
-      })
-        .session(transactionSession)
-        .exec();
-    } catch (err) {
-      return Promise.reject(err);
-    }
-
-    this.debug(
-      `${JSON.stringify({ customers })}`,
-      this.findByInclusionCriteriaTwo.name,
-      session
-    );
-    for (const customer of customers) {
-      if (
-        await this.audiencesHelper.checkInclusion(
-          customer,
-          criteria,
-          session,
-          account
-        )
-      )
-        ret.push(customer);
-    }
-
-    return Promise.resolve(ret);
   }
 
   async addPhCustomers(data: any[], account: Account) {
@@ -566,91 +509,6 @@ export class CustomersService {
     };
   }
 
-  /*
-  async findOne(account: Account, id: string, session: string) {
-    //if (!isValidObjectId(id))
-      //throw new HttpException('Id is not valid', HttpStatus.BAD_REQUEST);
-
-      this.debug(
-        `in customer service findOne`,
-        this.findOne.name,
-        session
-      );
-
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
-    let customer;
-
-    if (isValidObjectId(id)) {
-      this.debug(
-        `in customer service validobject id, we should be seeing fewer of these`,
-        this.findOne.name,
-        session
-      );
-       customer = await this.CustomerModel.findOne({
-        _id: new Types.ObjectId(id),
-        //_id: id,
-        workspaceId: workspace.id,
-      }).exec();
-      if (!customer){
-        this.debug(
-          `in customer service validobject id, found no user`,
-          this.findOne.name,
-          session
-        );
-        console.log("customer id is", id);
-        console.log("workspaceId is", workspace.id);
-        return null//throw new HttpException('Person not found', HttpStatus.NOT_FOUND);
-      }
-        
-      return {
-        ...customer.toObject(),
-        _id: id,
-      };
-
-    }
-    else{
-       customer = await this.CustomerModel.findOne({
-        //_id: new Types.ObjectId(id),
-        _id: id,
-        workspaceId: workspace.id,
-      }).exec();
-
-    }
-    
-    if (!customer)
-      return null//throw new HttpException('Person not found', HttpStatus.NOT_FOUND);
-    return {
-      ...customer.toObject(),
-      _id: id,
-    };
-  }
-  */
-
-  async transactionalFindOne(
-    account: Account,
-    id: string,
-    transactionSession: ClientSession
-  ) {
-    if (!isValidObjectId(id))
-      throw new HttpException('Id is not valid', HttpStatus.BAD_REQUEST);
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
-    const customer = await this.CustomerModel.findOne({
-      _id: new Types.ObjectId(id),
-      workspaceId: workspace.id,
-    })
-      .session(transactionSession)
-      .exec();
-    if (!customer)
-      throw new HttpException('Person not found', HttpStatus.NOT_FOUND);
-
-    return {
-      ...customer.toObject(),
-      _id: id,
-    };
-  }
-
   async findCustomerEvents(
     account: Account,
     customerId: string,
@@ -730,153 +588,6 @@ export class CustomersService {
     return Array.from(new Set(arr.filter(Boolean)));
   }
 
-  /**
-   * Update or create a customer based on a PostHog Identify event. Deletes protected keys if they are present on the event,
-   * looks up existing customers using the user ID and/or anonymous ID on the event, and sets properties on the user prepended
-   * with _posthog_. If the user ID and/or anonymous ID correlate to more than one customer, event is skipped.
-   *
-   * @param account Account associated with call
-   * @param identifyEvent Event Object
-   * @param transactionSession Mongo transaction session
-   * @param session HTTP session
-   * @returns Promise<boolean>
-   */
-  async phIdentifyUpdate(
-    account: Account,
-    identifyEvent: any,
-    transactionSession: ClientSession,
-    session: string
-  ): Promise<boolean> {
-    let query: any;
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
-    try {
-      delete identifyEvent.verified;
-      delete identifyEvent.workspaceId;
-      delete identifyEvent._id;
-      delete identifyEvent.__v;
-      delete identifyEvent.workflows;
-      delete identifyEvent.journeys;
-
-      query = {
-        workspaceId: workspace.id,
-        $or: [
-          { posthogId: { $in: [identifyEvent.userId] } },
-          { posthogId: { $in: [identifyEvent.anonymousId] } },
-        ],
-      };
-      this.debug(
-        `Preexisting customers query: ${JSON.stringify({ query: query })}`,
-        this.phIdentifyUpdate.name,
-        session,
-        account.id
-      );
-
-      const addedBefore = await this.CustomerModel.find(query)
-        .session(transactionSession)
-        .exec();
-
-      if (addedBefore.length === 1) {
-        this.debug(
-          `Customer to update on Identify event: ${JSON.stringify({
-            customer: addedBefore,
-          })}`,
-          this.phIdentifyUpdate.name,
-          session,
-          account.id
-        );
-
-        query = {
-          $addToSet: {
-            posthogId: {
-              $each: this.filterFalsyAndDuplicates([
-                identifyEvent.userId,
-                identifyEvent.anonymousId,
-              ]),
-            },
-          },
-          ...this.addPrefixToKeys(identifyEvent.context.traits, '_postHog_'),
-          ...(identifyEvent.phEmail && { phEmail: identifyEvent.phEmail }),
-          ...(identifyEvent.phPhoneNumber && {
-            phPhoneNumber: identifyEvent.phPhoneNumber,
-          }),
-          ...(identifyEvent.phDeviceToken && {
-            phDeviceToken: identifyEvent.phDeviceToken,
-          }),
-        };
-        this.debug(
-          `Update one customer query: ${JSON.stringify({ query: query })}`,
-          this.phIdentifyUpdate.name,
-          session,
-          account.id
-        );
-
-        const res = await this.CustomerModel.updateOne(
-          {
-            _id: new mongoose.Types.ObjectId(addedBefore[0].id),
-          },
-          query
-        )
-          .session(transactionSession)
-          .exec();
-        this.debug(
-          `Customer updated on Identify event: ${JSON.stringify({
-            result: res,
-          })}`,
-          this.phIdentifyUpdate.name,
-          session,
-          account.id
-        );
-        return true;
-      } else if (addedBefore.length === 0) {
-        query = {
-          workspaceId: workspace.id,
-          posthogId: this.filterFalsyAndDuplicates([
-            identifyEvent.userId
-              ? identifyEvent.userId
-              : identifyEvent.anonymousId,
-            identifyEvent.anonymousId,
-          ]),
-          ...this.addPrefixToKeys(identifyEvent.context.traits, '_postHog_'),
-          ...(identifyEvent.phEmail && { phEmail: identifyEvent.phEmail }),
-          ...(identifyEvent.phPhoneNumber && {
-            phPhoneNumber: identifyEvent.phPhoneNumber,
-          }),
-          ...(identifyEvent.phDeviceToken && {
-            phDeviceToken: identifyEvent.phDeviceToken,
-          }),
-        };
-        this.debug(
-          `Create one customer query: ${JSON.stringify({ query: query })}`,
-          this.phIdentifyUpdate.name,
-          session,
-          account.id
-        );
-        const createdCustomer = new this.CustomerModel(query);
-        const res = await createdCustomer.save({ session: transactionSession });
-        this.debug(
-          `Created new customer on Identify event: ${JSON.stringify(res)}`,
-          this.phIdentifyUpdate.name,
-          session,
-          account.id
-        );
-        return false;
-      } else {
-        this.warn(
-          `Found multiple customers with same posthog ID, skipping Identify event update: ${JSON.stringify(
-            { customers: addedBefore }
-          )}`,
-          this.phIdentifyUpdate.name,
-          session,
-          account.id
-        );
-      }
-    } catch (e) {
-      this.error(e, this.phIdentifyUpdate.name, session, account.id);
-      throw e;
-    }
-  }
-
   async update(
     account: Account,
     id: string,
@@ -911,81 +622,6 @@ export class CustomersService {
     ).exec();
 
     return replacementRes;
-  }
-
-  async transactionalUpdate(
-    account: Account,
-    id: string,
-    session: string,
-    updateCustomerDto: Record<string, unknown>,
-    transactionSession: ClientSession
-  ) {
-    try {
-      const { ...newCustomerData } = updateCustomerDto;
-      delete newCustomerData.verified;
-      delete newCustomerData.workspaceId;
-      delete newCustomerData._id;
-      delete newCustomerData.__v;
-      delete newCustomerData.audiences;
-      delete newCustomerData.id;
-      const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
-      const customer = await this.transactionalFindOne(
-        account,
-        id,
-        transactionSession
-      );
-
-      if (customer.workspaceId != workspace.id) {
-        throw new HttpException("You can't update this customer.", 400);
-      }
-
-      for (const key of Object.keys(newCustomerData).filter(
-        (item) => !KEYS_TO_SKIP.includes(item)
-      )) {
-        const value = newCustomerData[key];
-        if (value === '' || value === undefined || value === null) continue;
-
-        const keyType = getType(value);
-        const isArray = keyType.isArray();
-        let type = isArray ? getType(value[0]).name : keyType.name;
-
-        if (type === 'String') {
-          if (isEmail(value)) type = 'Email';
-          if (isDateString(value)) type = 'Date';
-        }
-
-        await this.CustomerKeysModel.updateOne(
-          { key, workspaceId: workspace.id },
-          {
-            $set: {
-              key,
-              type,
-              isArray,
-              workspaceId: workspace.id,
-            },
-          },
-          { upsert: true }
-        )
-          .session(transactionSession)
-          .exec();
-      }
-
-      const newCustomer = Object.fromEntries(
-        Object.entries({
-          ...customer,
-          ...newCustomerData,
-        }).filter(([_, v]) => v != null)
-      );
-
-      await this.CustomerModel.replaceOne({ _id: id }, newCustomer)
-        .session(transactionSession)
-        .exec();
-
-      return newCustomerData;
-    } catch (e) {
-      this.error(e, this.transactionalUpdate.name, session);
-    }
   }
 
   async returnAllPeopleInfo(
@@ -1398,45 +1034,6 @@ export class CustomersService {
   }
 
   /**
-   * Adds journey to customer's `Journeys` array.
-   *
-   * @param {CustomerDocument} customers The owner of the customers; if a string, its the id,otherwise its an account object
-   * @param {string} session Session identifier
-   * @param {ClientSession} [transactionSession]  Mongo Transaction
-   * @param {number} [skip] How many documents to skip; used for pagination
-   * @param {number} [limit] Max no. documents to return; used for pagination
-   *
-   * @returns {Promise<CustomerDocument[]>} Array of customer documents
-   *
-   */
-  async updateJourneyList(
-    customers: CustomerDocument[],
-    journeyID: string,
-    session: string,
-    transactionSession?: ClientSession
-  ) {
-    const unenrolledCustomers = customers.filter(
-      (customer) => customer.journeys.indexOf(journeyID) < 0
-    );
-    const query = this.CustomerModel.updateMany(
-      {
-        _id: { $in: unenrolledCustomers.map((customer) => customer.id) },
-      },
-      {
-        $addToSet: {
-          journeys: journeyID,
-        },
-        $set: {
-          [`journeyEnrollmentsDates.${journeyID}`]: new Date().toUTCString(),
-        },
-      }
-    );
-    if (transactionSession) query.session(transactionSession);
-
-    return await query.exec();
-  }
-
-  /**
    * Finds size of audience that match the some inclusion criteria.
    * Uses count under the hood.
    *
@@ -1568,12 +1165,12 @@ export class CustomersService {
     transactionSession: ClientSession
   ): Promise<Correlation> {
     let customer: CustomerDocument; // Found customer
-    let queryParam = { 
+    let queryParam = {
       workspaceId: workspace.id,
       $or: [
         { [dto.correlationKey]: dto.correlationValue },
-        { other_ids: dto.correlationValue }
-      ]
+        { other_ids: dto.correlationValue },
+      ],
     };
     try {
       customer = await this.CustomerModel.findOne(queryParam)
@@ -1585,11 +1182,14 @@ export class CustomersService {
     if (!customer) {
       // When no customer is found with the given correlation, create a new one
       // If the correlationKey is '_id', use it to set the _id of the new customer
-      let newCustomerData: any = { workspaceId: workspace.id, createdAt: new Date() };
+      let newCustomerData: any = {
+        workspaceId: workspace.id,
+        createdAt: new Date(),
+      };
       if (dto.correlationKey === '_id') {
         newCustomerData._id = dto.correlationValue;
       } else {
-        // If correlationKey is not '_id', 
+        // If correlationKey is not '_id',
         newCustomerData._id = randomUUID();
       }
       const createdCustomer = new this.CustomerModel(newCustomerData);
@@ -1630,7 +1230,6 @@ export class CustomersService {
     upsertCustomerDto: UpsertCustomerDto,
     session: string
   ): Promise<{ id: string }> {
-    //console.log("in upsert");
     try {
       let primaryKey: CustomerKeysDocument = await this.cacheManager.get(
         `${auth.workspace.id}-primary-key`
@@ -1646,7 +1245,6 @@ export class CustomersService {
         );
       }
 
-      //console.log("in upsert 2");
       if (!primaryKey)
         throw new HttpException(
           'Primary key has not been set: see https://laudspeaker.com/docs/developer/api/users/upsert for more details.',
@@ -1654,24 +1252,22 @@ export class CustomersService {
         );
 
       // Generate a new UUID to be used only if a new document is being inserted
-      const newId = randomUUID(); 
+      const newId = randomUUID();
 
-      //console.log("in upsert 3");
       const ret: CustomerDocument = await this.CustomerModel.findOneAndUpdate(
         {
           workspaceId: auth.workspace.id,
           [primaryKey.key]: upsertCustomerDto.primary_key,
-        },{
+        },
+        {
           $set: { ...upsertCustomerDto.properties },
-          $setOnInsert: { _id: newId } // This will ensure _id is set to newId only on insert
+          $setOnInsert: { _id: newId }, // This will ensure _id is set to newId only on insert
         },
         { upsert: true, new: true, projection: { _id: 1 } }
       );
-      //console.log("in upsert 4");
-      return Promise.resolve({ id: ret.id });
+      return Promise.resolve({ id: ret._id });
     } catch (err) {
       this.error(err, this.upsert.name, session, auth.account.email);
-      //console.log("in upsert 6");
       throw err;
     }
   }
@@ -1783,44 +1379,6 @@ export class CustomersService {
     return Promise.resolve(ret);
   }
 
-  async mergeCustomers(
-    account: Account,
-    oldCustomer: any,
-    newCustomer: any
-  ): Promise<void> {
-    //we assume newer information is more up to date
-    oldCustomer.slackName = newCustomer.name;
-
-    if (newCustomer.real_name != null) {
-      oldCustomer.slackRealName = newCustomer.real_name;
-    }
-    if (newCustomer.team_id?.length)
-      oldCustomer.slackTeamId = newCustomer.team_id;
-
-    if (newCustomer.profile?.first_name) {
-      oldCustomer.firstName = newCustomer.profile.first_name;
-    }
-
-    if (newCustomer.profile?.last_name) {
-      oldCustomer.lastName = newCustomer.profile.last_name;
-    }
-    if (newCustomer.tz_offset != null) {
-      oldCustomer.slackTimeZone = newCustomer.tz_offset;
-    }
-    if (newCustomer.profile?.email != null) {
-      oldCustomer.slackEmail = newCustomer.profile.email;
-    }
-    oldCustomer.slackDeleted = newCustomer.deleted;
-    oldCustomer.slackAdmin = newCustomer.is_admin;
-    //false until specified by user
-    if (!newCustomer.is_admin) {
-      oldCustomer.slackTeamMember = false;
-    } else {
-      oldCustomer.slackTeamMember = true;
-    }
-    await oldCustomer.save();
-  }
-
   async removeById(account: Account, custId: string, session: string) {
     this.debug(
       `Removing customer ${JSON.stringify({ id: custId })}`,
@@ -1838,7 +1396,7 @@ export class CustomersService {
     );
 
     const res = await this.CustomerModel.deleteOne({
-      _id: cust.id,
+      _id: cust._id,
       //_id: new mongoose.Types.ObjectId(cust.id),
     });
     this.debug(
@@ -2116,7 +1674,7 @@ export class CustomersService {
         });
 
         if (customer) {
-          await this.update(account, customer.id, record, session);
+          await this.update(account, customer._id, record, session);
           stats.updated++;
         } else {
           delete record.verified;
@@ -2128,7 +1686,7 @@ export class CustomersService {
           customer = await this.create(account, { ...record }, session);
           stats.created++;
         }
-        stats.customers.push(customer.id);
+        stats.customers.push(customer._id);
       } else {
         stats.skipped++;
       }
@@ -2161,7 +1719,7 @@ export class CustomersService {
     customer: CustomerDocument,
     session: string
   ) {
-    const audiences = await this.getDynamicAudiencesWithCustomer(customer.id);
+    const audiences = await this.getDynamicAudiencesWithCustomer(customer._id);
     for (const audience of audiences) {
       const inclusionCriteria = await this.audiencesService.getFilter(
         account,
@@ -2171,7 +1729,7 @@ export class CustomersService {
 
       if (!inclusionCriteria) continue;
 
-      const custIndex = audience.customers.indexOf(customer.id);
+      const custIndex = audience.customers.indexOf(customer._id);
 
       if (
         custIndex > -1 &&
@@ -2350,7 +1908,7 @@ export class CustomersService {
         const customer = await this.findById(account, customerId);
         if (!customer) return undefined;
 
-        return { id: customer.id, email: customer.email };
+        return { id: customer._id, email: customer.email };
       })
     );
 
@@ -2398,7 +1956,7 @@ export class CustomersService {
     const [data, count] =
       await this.journeyLocationsService.journeyLocationsRepository.findAndCount(
         {
-          where: { workspace: { id: workspace.id }, customer: customer.id },
+          where: { workspace: { id: workspace.id }, customer: customer._id },
           take,
           skip,
           relations: ['journey', 'step'],
@@ -3346,11 +2904,9 @@ export class CustomersService {
     session: string,
     tag: string
   ): Promise<string[]> {
-    console.log('In getJourneysWithTag', tag);
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
-    console.log('account id is', account.id);
 
     try {
       const journeys = await queryRunner.manager
@@ -4165,6 +3721,26 @@ export class CustomersService {
    *  eg onboarding has performed 1 times
    *
    * Handles SINGLE statements not queries with subqueries
+   * 
+   * eg:
+   * 
+   * {
+      "type": "Event",
+      "comparisonType": "has performed",
+      "eventName": "Event_View",
+      "value": 1,
+      "time": {
+        "comparisonType": "before",
+        "timeBefore": "1 days ago",
+        "dateComparisonType": "relative",
+        "timeAfter": "1 days ago"
+      },
+      "additionalProperties": {
+        "comparison": "all",
+        "properties": []
+      }
+    }
+   *
    *
    * @returns set of customers
    */
@@ -4180,47 +3756,6 @@ export class CustomersService {
 
     const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
-    this.debug(
-      'In customersEventStatement/n\n',
-      this.customersFromEventStatement.name,
-      session,
-      account.id
-    );
-
-    this.debug(
-      `value is: ${value}`,
-      this.customersFromEventStatement.name,
-      session,
-      account.id
-    );
-
-    this.debug(
-      `here are time and additional properties if they exist`,
-      this.customersFromEventStatement.name,
-      session,
-      account.id
-    );
-
-    this.debug(
-      JSON.stringify(time, null, 2),
-      this.customersFromEventStatement.name,
-      session,
-      account.id
-    );
-
-    this.debug(
-      JSON.stringify(additionalProperties, null, 2),
-      this.customersFromEventStatement.name,
-      session,
-      account.id
-    );
-
-    this.debug(
-      `comparison type is: ${comparisonType}`,
-      this.customersFromEventStatement.name,
-      session,
-      account.id
-    );
     // ****
     const mongoQuery: any = {
       event: eventName,
@@ -4228,7 +3763,86 @@ export class CustomersService {
     };
 
     if (time) {
+      console.log('the statement is', JSON.stringify(statement, null, 2));
+      const { dateComparisonType, timeAfter, timeBefore } = time;
       switch (time.comparisonType) {
+        case 'after':
+          //console.log("value type is", typeof value);
+          //console.log("value is", value);
+          let afterDate: Date;
+          let isoDateStringAfter: string;
+          if (dateComparisonType === 'relative') {
+            afterDate = this.parseRelativeDate(timeAfter);
+            isoDateStringAfter = afterDate.toISOString();
+          } else {
+            // Use the Date constructor for parsing RFC 2822 formatted dates
+            afterDate = new Date(timeAfter);
+            isoDateStringAfter = afterDate.toISOString();
+          }
+          //console.log("afterDate type is", typeof afterDate);
+          //console.log("after date is", afterDate);
+          // Check if afterDate is valid
+          if (isNaN(afterDate.getTime())) {
+            throw new Error('Invalid date format');
+          }
+          //query[key] = { $gt: afterDate };
+          mongoQuery.createdAt = { $gt: isoDateStringAfter };
+          break;
+        case 'before':
+          //console.log("value type is", typeof value);
+          //console.log("value is", value);
+          let beforeDate: Date;
+          let isoDateStringBefore: string;
+          if (dateComparisonType === 'relative') {
+            beforeDate = this.parseRelativeDate(timeBefore);
+            isoDateStringBefore = beforeDate.toISOString();
+          } else {
+            // Directly use the Date constructor for parsing RFC 2822 formatted dates
+            beforeDate = new Date(timeBefore);
+            isoDateStringBefore = beforeDate.toISOString();
+          }
+          //console.log("beforeDate type is", typeof beforeDate);
+          //console.log("before date is", beforeDate);
+          // Check if beforeDate is valid
+          if (isNaN(beforeDate.getTime())) {
+            throw new Error('Invalid date format');
+          }
+          //query[key] = { $lt: this.toMongoDate(beforeDate) };
+          //query[key] = { $lt: beforeDate };
+          mongoQuery.createdAt = { $lt: isoDateStringBefore };
+          break;
+        case 'during':
+          //console.log("value type is", typeof value);
+          //console.log("value is", value);
+          //console.log("subComparisonValue is", subComparisonValue);
+          let startDate: Date, endDate: Date;
+          let isoStart: string, isoEnd: string;
+          if (dateComparisonType === 'relative') {
+            startDate = this.parseRelativeDate(timeAfter);
+            // this is not a type, the front end is making the later date timeBefore
+            endDate = this.parseRelativeDate(timeBefore);
+            isoStart = startDate.toISOString();
+            isoEnd = endDate.toISOString();
+          } else {
+            // Use the Date constructor for parsing RFC 2822 formatted dates
+            startDate = new Date(timeAfter);
+            // this is not a type, the front end is making the later date timeBefore
+            endDate = new Date(timeBefore);
+            isoStart = startDate.toISOString();
+            isoEnd = endDate.toISOString();
+          }
+          //console.log("startDate type is", typeof startDate);
+          //console.log("startDate is", startDate);
+          //console.log("endDate type is", typeof endDate);
+          //console.log("endDate is", endDate);
+          // Check if dates are valid
+          if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+            throw new Error('Invalid date format');
+          }
+          //query[key] = { $gte: startDate, $lte: endDate };
+          mongoQuery.createdAt = { $gte: isoStart, $lte: isoEnd };
+          break;
+        /*
         case 'before':
           //.toUTCString()
           mongoQuery.createdAt = {
@@ -4248,7 +3862,9 @@ export class CustomersService {
           break;
         default:
           break;
+        */
       }
+      console.log('time query is', JSON.stringify(mongoQuery, null, 2));
     }
 
     //sub property not fully tested yet
@@ -4272,28 +3888,7 @@ export class CustomersService {
       }
     }
 
-    this.debug(
-      'mongo query is/n\n',
-      this.customersFromEventStatement.name,
-      session,
-      account.id
-    );
-
-    this.debug(
-      JSON.stringify(mongoQuery, null, 2),
-      this.customersFromEventStatement.name,
-      session,
-      account.id
-    );
-    this.debug(
-      `creating collection`,
-      this.customersFromEventStatement.name,
-      session,
-      account.id
-    );
     this.connection.db.collection(intermediateCollection);
-
-    // we should enact a strict policy in all other areas in the application as matching here is done on primary key
 
     if (comparisonType === 'has performed') {
       this.debug(
@@ -4409,7 +4004,7 @@ export class CustomersService {
           $merge: {
             into: intermediateCollection, // specify the target collection name
             on: '_id', // assuming '_id' is your unique identifier
-            whenMatched: 'fail', // prevents updates to existing documents; consider "keepExisting" if you prefer not to error out
+            whenMatched: 'keepExisting', // prevents updates to existing documents; consider "keepExisting" if you prefer not to error out
             whenNotMatched: 'insert', // inserts the document if no match is found
           },
         },
@@ -4424,7 +4019,7 @@ export class CustomersService {
       );
 
       this.debug(
-        JSON.stringify(aggregationPipeline, null, 2),
+        JSON.stringify(aggregationPipelineMobile, null, 2),
         this.customersFromEventStatement.name,
         session,
         account.id
@@ -4434,6 +4029,56 @@ export class CustomersService {
       const mobileResult: any =
         await this.eventsService.getCustomersbyEventsMongo(
           aggregationPipelineMobile
+        );
+
+      // we do one more merge with mobile users for those who may include the event correlationValues in their other_ids field
+      const aggregationPipelineMobileOtherIds: any[] = [
+        { $match: mongoQuery },
+        {
+          $lookup: {
+            from: 'customers',
+            localField: 'correlationValue',
+            foreignField: 'other_ids',
+            as: 'matchedCustomersFromOtherIds',
+          },
+        },
+        { $unwind: '$matchedCustomersFromOtherIds' },
+        {
+          $group: {
+            _id: '$matchedCustomersFromOtherIds._id',
+            count: { $sum: 1 },
+          },
+        },
+        { $match: { count: { $gte: value } } }, // Replace `value` with the minimum count of matches you want
+        {
+          $merge: {
+            into: intermediateCollection, // Specify the same intermediateCollection name as the first pipeline
+            on: '_id', // Merge on the `_id` field
+            whenMatched: 'keepExisting', // You could choose another option like 'replace', 'merge', or 'fail' based on your requirements
+            whenNotMatched: 'insert', // Insert if the _id was not matched (new entry)
+          },
+        },
+        // Add any additional stages you may need
+      ];
+
+      this.debug(
+        'aggregate mobile other ids query is/n\n',
+        this.customersFromEventStatement.name,
+        session,
+        account.id
+      );
+
+      this.debug(
+        JSON.stringify(aggregationPipelineMobileOtherIds, null, 2),
+        this.customersFromEventStatement.name,
+        session,
+        account.id
+      );
+
+      //fetch users here
+      const mobileResultOtherIds: any =
+        await this.eventsService.getCustomersbyEventsMongo(
+          aggregationPipelineMobileOtherIds
         );
 
       return intermediateCollection;
@@ -4518,33 +4163,6 @@ export class CustomersService {
         return intermediateCollection;
       }
 
-      /*
-      //mobile event check
-      let mobileMongoQuery = cloneDeep(mongoQuery)
-      mobileMongoQuery.source = "mobile";
-
-      const checkMobileEventExists = [
-        {
-          $match: mobileMongoQuery,
-        },
-        {
-          $group: {
-            _id: '$event',
-            count: { $sum: 1 },
-          },
-        },
-      ];
-      const checkMobile = await this.eventsService.getCustomersbyEventsMongo(
-        checkMobileEventExists
-      );
-      
-      if (checkMobile.length < 1) {
-        console.log("no mobile")
-      } else {
-
-      }
-      */
-
       this.debug(
         'event exists',
         this.customersFromEventStatement.name,
@@ -4555,7 +4173,7 @@ export class CustomersService {
       /*
        *  Find customers who perform event (non mobile) (pipeline1), then merge with users who perform event (mobile) (pipeline2)
        *  filter these customers out, return the remaining customers
-       *  re todo
+       *
        */
 
       const primaryKey = await this.getPrimaryKey(account, session); // Ensure this is done outside the pipeline
@@ -4578,20 +4196,6 @@ export class CustomersService {
         },
         { $out: intermediateCollection },
       ];
-
-      this.debug(
-        'about to run pipeline 1/n\n',
-        this.customersFromEventStatement.name,
-        session,
-        account.id
-      );
-
-      this.debug(
-        JSON.stringify(pipeline1, null, 2),
-        this.customersFromEventStatement.name,
-        session,
-        account.id
-      );
 
       const result = await this.eventsService.getCustomersbyEventsMongo(
         pipeline1
@@ -4649,6 +4253,38 @@ export class CustomersService {
       const result2 = await this.eventsService.getCustomersbyEventsMongo(
         pipeline2
       );
+
+      const pipeline_other_ids = [
+        { $match: mobileMongoQuery },
+        {
+          $addFields: {
+            //convertedCorrelationValue: { $toObjectId: '$correlationValue' },
+            convertedCorrelationValue: '$correlationValue',
+          },
+        },
+        {
+          $lookup: {
+            from: 'customers',
+            localField: 'convertedCorrelationValue',
+            foreignField: 'other_ids',
+            as: 'matchedOnCorrelationValue',
+          },
+        },
+        { $unwind: '$matchedOnCorrelationValue' },
+        {
+          $project: {
+            _id: '$matchedOnCorrelationValue._id', // Projects the _id of the matched customers
+          },
+        },
+        {
+          $merge: {
+            into: intermediateCollection,
+            on: '_id',
+            whenMatched: 'keepExisting',
+            whenNotMatched: 'insert',
+          },
+        },
+      ];
 
       const pipeline3 = [
         {
@@ -4752,27 +4388,6 @@ export class CustomersService {
         { $out: intermediateCollection },
       ];
       */
-
-      this.debug(
-        'aggregate query is/n\n',
-        this.customersFromEventStatement.name,
-        session,
-        account.id
-      );
-
-      this.debug(
-        'Here are the results',
-        this.customersFromEventStatement.name,
-        session,
-        account.id
-      );
-
-      this.debug(
-        JSON.stringify(result, null, 2),
-        this.customersFromEventStatement.name,
-        session,
-        account.id
-      );
 
       return intermediateCollection;
     } else {
@@ -5012,53 +4627,6 @@ export class CustomersService {
       value,
       subComparisonValue,
     } = statement;
-    this.debug(
-      'NB this function takes in single statements not full queries, for full queries use customerMatchesQuery/n\n',
-      this.evaluateSingleStatement.name,
-      session,
-      account.id
-    );
-    this.debug(
-      'In evaluateSingleStatement deciding which sub evaluate statement to go to next/n\n',
-      this.evaluateSingleStatement.name,
-      session,
-      account.id
-    );
-
-    this.debug(
-      `the query is: ${JSON.stringify(statement, null, 2)}`,
-      this.evaluateSingleStatement.name,
-      session,
-      account.id
-    );
-
-    this.debug(
-      `the type is: ${JSON.stringify(type, null, 2)}`,
-      this.evaluateSingleStatement.name,
-      session,
-      account.id
-    );
-
-    this.debug(
-      `the key is: ${key}`,
-      this.evaluateSingleStatement.name,
-      session,
-      account.id
-    );
-
-    this.debug(
-      `value is: ${value}`,
-      this.evaluateSingleStatement.name,
-      session,
-      account.id
-    );
-
-    this.debug(
-      `the subComparisonValue is: ${subComparisonValue}`,
-      this.evaluateSingleStatement.name,
-      session,
-      account.id
-    );
 
     switch (type) {
       case 'Attribute':
@@ -5168,24 +4736,6 @@ export class CustomersService {
     session: string
   ): Promise<boolean> {
     const userId = (<Account>account).id;
-    this.debug(
-      'In evaluate message statement',
-      this.evaluateMessageStatement.name,
-      session,
-      account.id
-    );
-    this.debug(
-      `the type of message is: ${typeOfMessage}`,
-      this.evaluateMessageStatement.name,
-      session,
-      account.id
-    );
-    this.debug(
-      `account id is: ${userId}`,
-      this.evaluateMessageStatement.name,
-      session,
-      account.id
-    );
 
     const {
       type,
@@ -5332,45 +4882,6 @@ export class CustomersService {
   ): Promise<boolean> {
     const { eventName, comparisonType, value, time, additionalProperties } =
       statement;
-    /* 
-    console.log('In evaluateEventStatement/n\n');
-    console.log(
-      'here are time and additional properties (if they exist)',
-      JSON.stringify(time, null, 2)
-    );
-    console.log(JSON.stringify(additionalProperties, null, 2));
-    console.log('comparison type is', comparisonType);
-    */
-    this.debug(
-      'In evaluateEventStatement/n\n',
-      this.evaluateEventStatement.name,
-      session,
-      account.id
-    );
-    this.debug(
-      'here are time and additional properties (if they exist)',
-      this.evaluateEventStatement.name,
-      session,
-      account.id
-    );
-    this.debug(
-      JSON.stringify(time, null, 2),
-      this.evaluateEventStatement.name,
-      session,
-      account.id
-    );
-    this.debug(
-      JSON.stringify(additionalProperties, null, 2),
-      this.evaluateEventStatement.name,
-      session,
-      account.id
-    );
-    this.debug(
-      `comparison type is: ${comparisonType}`,
-      this.evaluateEventStatement.name,
-      session,
-      account.id
-    );
 
     const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
 
@@ -5390,17 +4901,6 @@ export class CustomersService {
       pkCondition[`correlationKey`] = currentPK;
       pkCondition[`correlationValue`] = customer[currentPK];
       mongoQuery.$or.push(pkCondition);
-      /*
-    if (currentPK) {
-      this.debug(
-        `current pk is: ${currentPK}`,
-        this.evaluateEventStatement.name,
-        session,
-        account.id
-      );
-      mongoQuery.correlationKey = currentPK;
-      mongoQuery.correlationValue = customer[currentPK];
-      */
     } else {
       // Handle case where currentPK is null
       //uncomment when primary key thing is working correctly
@@ -5410,21 +4910,12 @@ export class CustomersService {
         HttpStatus.BAD_REQUEST
       );
       */
-      //to do just for testing
-      /*
-      console.log('pk isnt working so set as email');
-      const pkCondition = {};
-      currentPK = 'email';
-      pkCondition[`correlationKey`] = currentPK;
-      pkCondition[`correlationValue`] = customer[currentPK];
-      mongoQuery.$or.push(pkCondition);
-      */
     }
 
     //we need this condition to handle our mobile sdk since we save events with customer ID not customer primary key as the correlationKey
     const idCondition = {
       correlationKey: '_id',
-      correlationValue: customer.id, // Assuming customer.id stores the MongoDB _id
+      correlationValue: customer._id, // Assuming customer.id stores the MongoDB _id
     };
     mongoQuery.$or.push(idCondition);
 
@@ -5700,110 +5191,14 @@ export class CustomersService {
     }
   }
 
-  //** test **
-  /*
-   * NB the structure of the query argument
-   *
-   *
-   */
-  async testCustomerInSegment(query: any, account: Account): Promise<boolean> {
-    //Promise<Set<string>>  {
-    const session = 'this is a fake session';
-    this.debug(
-      'In Test Customer Segment',
-      this.testCustomerInSegment.name,
-      session,
-      account.id
-    );
-    this.debug(
-      'test query is',
-      this.testCustomerInSegment.name,
-      session,
-      account.id
-    );
-    this.debug(
-      JSON.stringify(query, null, 2),
-      this.testCustomerInSegment.name,
-      session,
-      account.id
-    );
-
-    console.log('here here');
-
-    const testCustomer = new this.CustomerModel({
-      externalId: '6583b25df2be8cd3c8b17f61',
-      firstName: 'A',
-      lastName: 'B',
-      email: 'd@trytachyon.com',
-      workflows: [],
-      journeys: ['12624e62-367e-483b-9ddf-38160f4fd955'],
-      ownerId: 'c65069d2-ef33-427b-b093-6dd5870c4c33',
-      posthogId: [],
-      verified: true,
-      __v: 0,
-    });
-
-    this.debug(
-      JSON.stringify(testCustomer, null, 2),
-      this.testCustomerInSegment.name,
-      session,
-      account.id
-    );
-
-    console.log('here here 3');
-
-    //statement, account, session
-    const eventCust = await this.getSegmentCustomersFromQuery(
-      query,
-      account,
-      'fake session',
-      true,
-      0,
-      'test_collection'
-    );
-    console.log('the result of the eventCust is', eventCust); //JSON.stringify(eventCust, null, 2));
-
-    //query: any,account: Account,session: string,customer?: CustomerDocument, customerId?: string,
-    const resultOfCheckCustomerMatchesQuery =
-      await this.checkCustomerMatchesQuery(
-        query,
-        account,
-        'fake session',
-        testCustomer
-      );
-    console.log(
-      'the result of the evaluation is',
-      resultOfCheckCustomerMatchesQuery
-    );
-
-    //console.log("test customer is", JSON.stringify(testCustomer,null,2));
-    //console.log("the segment and the customer are", await this.checkCustomerMatchesQuery(testCustomer, query, account));
-
-    return false; //await evaluateStatement()
-    /*
-    let custs = await this.getSegmentCustomersFromQuery(query, account, session)
-    
-    console.log(
-      'the segment is',
-      custs
-    );
-    this.debug(
-      `the segment is: ${custs}`,
-      this.testCustomerInSegment.name,
-      session,
-      account.id
-    );
-    return custs;
-    */
-  }
-
   public async searchForTest(
     account: Account,
     take = 100,
     skip = 0,
-    search = ''
+    search = '',
+    isWebhook = false
   ): Promise<{
-    data: { id: string; email: string; phone: string }[];
+    data: { id: string; email: string; phone: string; [key: string]: string }[];
     totalPages: number;
   }> {
     const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
@@ -5835,9 +5230,9 @@ export class CustomersService {
         ],
       };
 
-      query['$and'] = [deviceTokenConditions, searchConditions];
+      if (!isWebhook) query['$and'] = [deviceTokenConditions, searchConditions];
     } else {
-      query['$or'] = deviceTokenConditions['$or'];
+      if (!isWebhook) query['$or'] = deviceTokenConditions['$or'];
     }
 
     const totalCustomers = await this.CustomerModel.count(query).exec();
@@ -5859,6 +5254,10 @@ export class CustomersService {
         info['id'] = cust['_id'].toString();
         info['email'] = cust['email']?.toString() || '';
         info['phone'] = cust['phone']?.toString() || '';
+        if (pk?.key) {
+          info[pk.key] = cust[pk.key]?.toString() || '';
+        }
+
         return info;
       }),
       totalPages,
@@ -6040,9 +5439,10 @@ export class CustomersService {
         }
       }
     } else if (convertTo === AttributeType.BOOLEAN) {
-      converted = acceptableBooleanConvertable.true.includes(value)
+      const trimmedLowerValue = value.trim().toLowerCase();
+      converted = acceptableBooleanConvertable.true.includes(trimmedLowerValue)
         ? true
-        : acceptableBooleanConvertable.false.includes(value)
+        : acceptableBooleanConvertable.false.includes(trimmedLowerValue)
         ? false
         : null;
     } else if (
@@ -6582,7 +5982,7 @@ export class CustomersService {
     }
 
     await this.CustomerModel.updateOne(
-      { _id: customer.id },
+      { _id: customer._id },
       {
         [body.type === PushPlatforms.ANDROID
           ? 'androidDeviceToken'
@@ -6590,7 +5990,7 @@ export class CustomersService {
       }
     );
 
-    return customer.id;
+    return customer._id;
   }
 
   async identifyCustomer(
@@ -6645,13 +6045,13 @@ export class CustomersService {
     });
 
     if (identifiedCustomer) {
-      await this.deleteEverywhere(customer.id);
+      await this.deleteEverywhere(customer._id);
 
       await customer.deleteOne();
 
-      return identifiedCustomer.id;
+      return identifiedCustomer._id;
     } else {
-      await this.CustomerModel.findByIdAndUpdate(customer.id, {
+      await this.CustomerModel.findByIdAndUpdate(customer._id, {
         ...customer.toObject(),
         ...body.optionalProperties,
         //...uniqueProperties,
@@ -6661,7 +6061,7 @@ export class CustomersService {
       });
     }
 
-    return customer.id;
+    return customer._id;
   }
 
   async setCustomerProperties(
@@ -6692,7 +6092,7 @@ export class CustomersService {
       );
     }
 
-    await this.CustomerModel.findByIdAndUpdate(customer.id, {
+    await this.CustomerModel.findByIdAndUpdate(customer._id, {
       ...customer.toObject(),
       ...body.optionalProperties,
       workspaceId: workspace.id,

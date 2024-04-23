@@ -124,7 +124,7 @@ export class JourneyLocationsService {
   ) {
     this.log(
       JSON.stringify({
-        info: `Creating JourneyLocation (${journey.id}, ${customer.id})`,
+        info: `Creating JourneyLocation (${journey.id}, ${customer._id})`,
       }),
       this.createAndLock.name,
       session,
@@ -139,20 +139,20 @@ export class JourneyLocationsService {
         where: {
           journey: journey.id,
           workspace: { id: workspace.id },
-          customer: customer.id,
+          customer: customer._id,
         },
       });
 
       if (location)
         throw new Error(
-          `Customer ${customer.id} already enrolled in journey ${journey.id}; located in step ${location.step.id}`
+          `Customer ${customer._id} already enrolled in journey ${journey.id}; located in step ${location.step.id}`
         );
 
       // Step 2: Create new journey Location row, add time that user entered the journey
       await queryRunner.manager.save(JourneyLocation, {
         journey: journey.id,
         workspace,
-        customer: customer.id ?? customer._id.toString(),
+        customer: customer._id,
         step: step,
         stepEntry: Date.now(),
         moveStarted: Date.now(),
@@ -162,17 +162,17 @@ export class JourneyLocationsService {
         where: {
           journey: journey.id,
           workspace: { id: workspace.id },
-          customer: customer.id,
+          customer: customer._id,
         },
       });
       if (location)
         throw new Error(
-          `Customer ${customer.id} already enrolled in journey ${journey.id}; located in step ${location.step.id}`
+          `Customer ${customer._id} already enrolled in journey ${journey.id}; located in step ${location.step.id}`
         );
       await this.journeyLocationsRepository.save({
         journey: journey.id,
         workspace,
-        customer: customer.id,
+        customer: customer._id,
         step: step,
         stepEntry: Date.now(),
         moveStarted: Date.now(),
@@ -284,6 +284,38 @@ export class JourneyLocationsService {
     await this.move(location, from, to, session, account, queryRunner);
   }
 
+  /**
+   * Finds and returns a single JourneyLocation entity for a given journey and customer, including
+   * the related Step entity. Optionally uses a QueryRunner for managed transactional queries.
+   *
+   * This method is intended to retrieve a JourneyLocation entity for a specific customer within a specific
+   * journey. It ensures that the Step relation associated with the JourneyLocation is also loaded.
+   * This can be particularly useful when detailed information about the step within the journey is needed
+   * alongside the journey location data.
+   *
+   * @param {Journey} journey - The Journey entity for which to find the JourneyLocation.
+   * @param {CustomerDocument} customer - The CustomerDocument entity representing the customer for whom to find the JourneyLocation.
+   * @param {QueryRunner} [queryRunner] - An optional QueryRunner instance for transaction management. If provided,
+   * the query will be executed within a managed transaction. Otherwise, the default repository is used to execute the query.
+   * @returns {Promise<JourneyLocation>} A promise that resolves to a JourneyLocation entity matching the specified journey
+   * and customer, with the Step relation loaded. If no matching entity is found, the promise resolves to null.
+   *
+   * @example
+   * // Without a QueryRunner
+   * const journeyLocation = await findForWrite(journey, customerDocument);
+   * // The returned journeyLocation will have the Step relation loaded.
+   *
+   * @example
+   * // With a QueryRunner, within a transaction
+   * const queryRunner = connection.createQueryRunner();
+   * await queryRunner.connect();
+   * try {
+   *   const journeyLocation = await findForWrite(journey, customerDocument, queryRunner);
+   *   // The returned journeyLocation will have the Step relation loaded.
+   * } finally {
+   *   await queryRunner.release();
+   * }
+   */
   async findForWrite(
     journey: Journey,
     customer: CustomerDocument,
@@ -291,22 +323,11 @@ export class JourneyLocationsService {
     account?: Account,
     queryRunner?: QueryRunner
   ): Promise<JourneyLocation> {
-    this.log(
-      JSON.stringify({
-        info: `Finding JourneyLocation (${journey.id}, ${customer.id})`,
-      }),
-      this.findForWrite.name,
-      session,
-      account?.email
-    );
-    const workspace = account?.teams?.[0]?.organization?.workspaces?.[0];
-
     if (queryRunner) {
       return await queryRunner.manager.findOne(JourneyLocation, {
         where: {
           journey: journey.id,
-          workspace: workspace ? { id: workspace.id } : undefined,
-          customer: customer.id,
+          customer: customer._id,
         },
         relations: ['step'],
       });
@@ -314,15 +335,47 @@ export class JourneyLocationsService {
       return await this.journeyLocationsRepository.findOne({
         where: {
           journey: journey.id,
-          workspace: workspace ? { id: workspace.id } : undefined,
-
-          customer: customer.id,
+          customer: customer._id,
         },
         relations: ['step'],
       });
     }
   }
 
+  /**
+   * Finds and returns JourneyLocation entities for a given journey and a list of customers, including
+   * the related Step entity for each JourneyLocation. Optionally uses a QueryRunner for managed transactional queries.
+   *
+   * @param {Journey} journey - The journey entity for which to find related JourneyLocation entities.
+   * @param {string[]} customers - An array of customer identifiers to filter the JourneyLocation entities by.
+   * @param {QueryRunner} [queryRunner] - An optional QueryRunner instance for transaction management. If provided,
+   * the function will use it to execute the query within a managed transaction. Otherwise, it uses the default
+   * repository to execute the query. When executed, the JourneyLocation entities returned will include
+   * their related Step entity fully loaded.
+   * @returns {Promise<JourneyLocation[]>} A promise that resolves to an array of JourneyLocation entities
+   * matching the specified journey and customer IDs, with each entity's Step relation loaded. If no matching
+   * entities are found or if the customers array is empty, the promise resolves to an empty array.
+   *
+   * @example
+   * // Without a QueryRunner
+   * const journeyLocations = await findForWriteBulk(journey, ['customer1', 'customer2']);
+   * // The returned journeyLocations will have the Step relation loaded for each entity.
+   *
+   * @example
+   * // With a QueryRunner, within a transaction
+   * const queryRunner = connection.createQueryRunner();
+   * await queryRunner.connect();
+   * await queryRunner.startTransaction();
+   * try {
+   *   const journeyLocations = await findForWriteBulk(journey, ['customer1', 'customer2'], queryRunner);
+   *   // The returned journeyLocations will have the Step relation loaded for each entity.
+   *   await queryRunner.commitTransaction();
+   * } catch (err) {
+   *   await queryRunner.rollbackTransaction();
+   * } finally {
+   *   await queryRunner.release();
+   * }
+   */
   async findForWriteBulk(
     journey: Journey,
     customers: string[],
@@ -332,6 +385,7 @@ export class JourneyLocationsService {
     if (queryRunner) {
       return await queryRunner.manager
         .createQueryBuilder(JourneyLocation, 'journeyLocation')
+        .leftJoinAndSelect('journeyLocation.step', 'step')
         .where('journeyLocation.journeyId = :journeyId', {
           journeyId: journey.id,
         })
@@ -342,6 +396,7 @@ export class JourneyLocationsService {
     } else {
       return await this.journeyLocationsRepository
         .createQueryBuilder('journeyLocation')
+        .leftJoinAndSelect('journeyLocation.step', 'step')
         .where('journeyLocation.journeyId = :journeyId', {
           journeyId: journey.id,
         })
@@ -468,7 +523,7 @@ export class JourneyLocationsService {
           journey: journey.id,
           workspace: workspace ? { id: workspace.id } : undefined,
 
-          customer: customer.id,
+          customer: customer._id,
         },
         relations: ['workspace', 'journey', 'step'],
       });
@@ -478,7 +533,7 @@ export class JourneyLocationsService {
           journey: journey.id,
           workspace: workspace ? { id: workspace.id } : undefined,
 
-          customer: customer.id,
+          customer: customer._id,
         },
         relations: ['workspace', 'journey', 'step'],
       });
@@ -604,36 +659,6 @@ export class JourneyLocationsService {
       );
     }
   }
-
-  /**
-   * Mark a customer as no longer moving through a journey.
-   *
-   * @param {Account} account
-   * @param {Journey} journey
-   * @param {CustomerDocument} customer
-   * @param {String} session
-   * @param {QueryRunner} [queryRunner]
-   */
-  // async findAndUnlock(
-  //   journey: Journey,
-  //   customer: CustomerDocument,
-  //   session: string,
-  //   account?: Account,
-  //   queryRunner?: QueryRunner
-  // ) {
-  //   const location = await this.findForWrite(
-  //     journey,
-  //     customer,
-  //     session,
-  //     account,
-  //     queryRunner
-  //   );
-  //   if (!location)
-  //     throw new Error(
-  //       `Customer ${location.customer} is not in journey ${location.journey}`
-  //     );
-  //   await this.unlock(location, session, account, queryRunner);
-  // }
 
   /**
    * Mark a customer as no longer moving through a journey.

@@ -46,6 +46,9 @@ import { CustomersService } from '../customers/customers.service';
 import { Imports } from '../customers/entities/imports.entity';
 import { StepsModule } from '../steps/steps.module';
 import { S3Service } from '../s3/s3.service';
+import { Step } from '../steps/entities/step.entity';
+import { Journey } from '../journeys/entities/journey.entity';
+import { WebhooksModule } from '../webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -58,6 +61,8 @@ import { S3Service } from '../s3/s3.service';
       Workflow,
       JourneyLocation,
       Imports,
+      Step,
+      Journey,
     ]),
     MongooseModule.forFeature([
       { name: Customer.name, schema: CustomerSchema },
@@ -93,6 +98,7 @@ import { S3Service } from '../s3/s3.service';
     }),
     forwardRef(() => AuthModule),
     forwardRef(() => CustomersModule),
+    forwardRef(() => WebhooksModule),
     forwardRef(() => AccountsModule),
     forwardRef(() => TemplatesModule),
     forwardRef(() => WorkflowsModule),

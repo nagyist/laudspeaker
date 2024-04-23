@@ -93,9 +93,6 @@ export class ImportProcessor extends WorkerHost {
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
-    console.log(
-      '\n\n------\n\n------\n\n------\n\n------\n\n------\n\n------\n\n------\n\n'
-    );
     const {
       fileData,
       clearedMapping,
@@ -107,8 +104,8 @@ export class ImportProcessor extends WorkerHost {
     } = job.data;
 
     try {
+      let batchNumber = 0;
       let batch = [];
-      let batchPromise;
       const readPromise = new Promise<void>(async (resolve, reject) => {
         const s3CSVStream = await this.s3Service.getImportedCSVReadStream(
           fileData.fileKey
@@ -160,11 +157,15 @@ export class ImportProcessor extends WorkerHost {
               create: { ...convertedRecord },
               update: { ...filteredUpdateOptions },
             });
-            try {
-              await batchPromise;
-            } catch (error) {}
             if (batch.length >= 10000) {
-              batchPromise = this.processImportRecord(
+              csvStream.pause();
+              this.warn(
+                `Processing batch # ${batchNumber}. Batch size: ${batch.length}`,
+                this.process.name,
+                session
+              );
+              batchNumber++;
+              await this.processImportRecord(
                 account,
                 settings.importOption,
                 passedPK.asAttribute.key,
@@ -173,14 +174,17 @@ export class ImportProcessor extends WorkerHost {
                 session
               );
               batch = [];
+              csvStream.resume();
             }
           })
           .on('end', async () => {
-            try {
-              await batchPromise;
-            } catch (error) {}
             if (batch.length > 0) {
-              batchPromise = this.processImportRecord(
+              this.warn(
+                `Processing ending batch. Batch size: ${batch.length}`,
+                this.process.name,
+                session
+              );
+              await this.processImportRecord(
                 account,
                 settings.importOption,
                 passedPK.asAttribute.key,
@@ -190,9 +194,6 @@ export class ImportProcessor extends WorkerHost {
               );
               batch = [];
             }
-            try {
-              await batchPromise;
-            } catch (error) {}
             resolve();
           })
           .on('error', (err) => {
@@ -216,6 +217,11 @@ export class ImportProcessor extends WorkerHost {
     segmentId?: string,
     session?: string
   ) {
+    this.warn(
+      `Processing number of imports ${data.length}.`,
+      this.processImportRecord.name,
+      session
+    );
     const withoutDuplicateKeys = Array.from(
       new Set(data.map((el) => el.pkKeyValue))
     );
