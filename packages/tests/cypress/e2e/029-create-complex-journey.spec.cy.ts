@@ -10,9 +10,9 @@ const { email, password, firstName, lastName, organizationName, timeZone } =
   credentials;
 
 const testUsers = [
-  { user_id: 492, name: "Bose", email: "testing+1@laudspeaker.com"},
-  { user_id: 913, name: "Charawi", email: "testing+2@laudspeaker.com"},
-  { user_id: 816, name: "Thaler", email: "testing+3@laudspeaker.com"},
+  { user_id: 492, name: "Bose", email: "testing+1@laudspeaker.com" },
+  { user_id: 913, name: "Charawi", email: "testing+2@laudspeaker.com" },
+  { user_id: 816, name: "Thaler", email: "testing+3@laudspeaker.com" },
 ];
 
 const createWebhook = ({
@@ -43,28 +43,31 @@ const createWebhook = ({
   cy.get("#saveDraftTemplate").click();
 };
 
-const addExitNode = ({ target = "[data-testid='empty-node']"}) => {
+const addExitNode = ({ target = "[data-testid='empty-node']" }) => {
   drag("#exit", target);
-  cy.get('#flow-builder-sidepanel-cancel').click();
-}
+  cy.get("#flow-builder-sidepanel-cancel").click();
+};
 
 const addTimeDelayNode = () => {
   cy.wait(2000);
   drag("#timeDelay", "[data-testid='empty-node']", { fireDragOver: false });
   cy.get("[data-testid='time-delay-minutes']").type("1");
-  cy.get('#save-node-data').click();
-}
+  cy.get("#save-node-data").click();
+};
 
-const addWebhookNode = ({ webhook = "WH_1", target = "[data-testid='empty-node']"}) =>{
+const addWebhookNode = ({
+  webhook = "WH_1",
+  target = "[data-testid='empty-node']",
+}) => {
   cy.wait(2000);
   drag("#webhook", target, { fireDragOver: false });
-  cy.get('#template-select').select(webhook);
-  cy.get('#save-node-data').click();
-}
+  cy.get("#template-select").select(webhook);
+  cy.get("#save-node-data").click();
+};
 
 const zoomOut = () => {
-  cy.get('.react-flow__controls-zoomout').click();
-}
+  cy.get(".react-flow__controls-zoomout").click();
+};
 
 describe("Create complex journey", () => {
   beforeEach(() => {
@@ -86,7 +89,7 @@ describe("Create complex journey", () => {
   it("works as expected", () => {
     cy.wait(1000);
 
-    uploadCSV("correctness_testing.csv")
+    uploadCSV("correctness_testing.csv");
     mapAttributesToNewFields();
     cy.get("#next-button").click();
     cy.get("[data-testid='confirm-validation-button']").click();
@@ -108,15 +111,17 @@ describe("Create complex journey", () => {
 
       testUsers.forEach(({ email }, idx) => {
         cy.wait(1000);
-        simulatedEvents(`${Cypress.env("TESTS_API_BASE_URL")}/events/`, APIKey,
-        {
-          "correlationKey": "email",
-          "correlationValue": email,
-          "source": "custom",
-          "event": `Event ${idx + 1}`,
-          "payload": { "example": 4 }
-        })
-
+        simulatedEvents(
+          `${Cypress.env("TESTS_API_BASE_URL")}/events/`,
+          APIKey,
+          {
+            correlationKey: "email",
+            correlationValue: email,
+            source: "custom",
+            event: `Event ${idx + 1}`,
+            payload: { example: 4 },
+          }
+        );
 
         // create webhooks inside here instead of creating another loop
         createWebhook({
@@ -137,7 +142,6 @@ describe("Create complex journey", () => {
       cy.contains("testing+3@laudspeaker.com").should("be.visible");
     });
 
-
     cy.visit("/flow");
     cy.get("#create-journey").click();
     cy.get("#journey-name-input").clear().type("complex-journey-test");
@@ -149,15 +153,20 @@ describe("Create complex journey", () => {
     cy.get("button").contains("Add branch").click();
     cy.get('[data-testid="filter-builder-add-condition-button"]').click();
     cy.get('[data-testid="attribute-name-input-0"]').type("is_own_car");
-    cy.get('[data-testid="attribute-statement-0"]').type("true");
+    cy.get("[data-testid='combobox-option-is_own_car']").click();
+    cy.get("[data-testid='attribute-statement-select-0']").select(
+      "Boolean;;is equal to"
+    );
+    cy.get("[data-testid='attribute-statement-0-boolean-button']").click();
+    cy.get("[data-testid='attribute-statement-0-boolean-option-true']").click();
     cy.get("[data-testid='flow-builder-multisplit-add-button']").click();
-    cy.get('#save-node-data').click();
+    cy.get("#save-node-data").click();
 
-    addExitNode({ target: "[data-testid='empty-node']:last" })
+    addExitNode({ target: "[data-testid='empty-node']:last" });
 
     drag("#multisplit", "[data-testid='empty-node']", { fireDragOver: false });
     cy.get("button").contains("Add branch").click();
-    
+
     cy.get('[data-testid="filter-builder-condition-select"]').select("All");
 
     // condition #1
@@ -179,12 +188,12 @@ describe("Create complex journey", () => {
     cy.get('[data-testid="attribute-statement-2"]').type("c_loan_list");
 
     cy.get("[data-testid='flow-builder-multisplit-add-button']").click();
-    cy.get('#save-node-data').click();
+    cy.get("#save-node-data").click();
 
-    addExitNode({ target: "[data-testid='empty-node']:last" })
+    addExitNode({ target: "[data-testid='empty-node']:last" });
 
     cy.wait(2000);
-  
+
     zoomOut();
     zoomOut();
 
@@ -199,16 +208,25 @@ describe("Create complex journey", () => {
     cy.get("#experiment-add-branch").click();
 
     cy.wait(1000);
-    cy.get("[data-testid='branch-1-hours']").invoke('val', '').type("33");
-    cy.get("[data-testid='branch-2-hours']").invoke('val', '').type("33");
-    cy.get("[data-testid='branch-3-hours']").invoke('val', '').type("34");
-    cy.get('#save-node-data').click();
+    cy.get("[data-testid='branch-1-hours']").invoke("val", "").type("33");
+    cy.get("[data-testid='branch-2-hours']").invoke("val", "").type("33");
+    cy.get("[data-testid='branch-3-hours']").invoke("val", "").type("34");
+    cy.get("#save-node-data").click();
 
-    cy.get('.react-flow__controls-fitview').click();
+    cy.get(".react-flow__controls-fitview").click();
 
-    addWebhookNode({ webhook: "WH_1", target: "[data-testid='empty-node']:first" });
-    addWebhookNode({ webhook: "WH_2", target: "[data-testid='empty-node']:nth(1)" });
-    addWebhookNode({ webhook: "WH_3", target: "[data-testid='empty-node']:nth(2)" });
+    addWebhookNode({
+      webhook: "WH_1",
+      target: "[data-testid='empty-node']:first",
+    });
+    addWebhookNode({
+      webhook: "WH_2",
+      target: "[data-testid='empty-node']:nth(1)",
+    });
+    addWebhookNode({
+      webhook: "WH_3",
+      target: "[data-testid='empty-node']:nth(2)",
+    });
 
     cy.wait(2000);
     addExitNode({ target: "[data-testid='empty-node']:first" });
